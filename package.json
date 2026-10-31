@@ -1,13 +1,22 @@
 {
   "name": "dsh-fileguard",
   "version": "0.1.0-beta",
-  "description": "文件守卫：删除/写入命令先拦一次，模型说明清楚、用户点头后才放行；AI 自己写的临时文件按台账免审",
+  "description": "文件守卫：删除/写入命令先拦下来，模型说明清楚、用户给了 token 才放行；AI 自己写的临时文件按台账免审",
   "type": "module",
   "main": "./lib/index.js",
   "license": "MIT",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "dependencies": {
