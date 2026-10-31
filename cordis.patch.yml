@@ -1,0 +1,10 @@
+# entry 的 id 必须等于设置命名空间名（见 lib/index.js 的 NS）。
+# DSH 0.2.x 用 `configEditor.entries().find((row) => row.options.id === ns)` 定位
+# 可写目标，id 与命名空间不同名时设置页拿不到 schema。
+#
+# 刻意**不写 config 段**：DSH 的热挂载只支持纯 insert，patch 里一旦出现 config /
+# 表达式，就会退化成「已安装，重启后生效」。不写 config 时各字段走 schemastery 的
+# default，效果与 `config: {}` 完全相同。
+- insert:
+    - id: dsh-fileguard
+      name: dsh-fileguard

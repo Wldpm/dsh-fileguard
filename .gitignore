@@ -1,0 +1,16 @@
+# 运行时状态，不进仓库
+policy.json
+ai-created.json
+
+# 依赖（@deepseek-ai/schemastery 由宿主提供，不需要提交）
+node_modules/
+
+# 日志
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
