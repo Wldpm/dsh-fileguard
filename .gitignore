@@ -7,6 +7,14 @@ node_modules/
 # 日志
 *.log
 
+# 交接文档：写给接手维护的 Agent，含本机路径，不随仓库发布
+HANDOFF.md
+
+# 配置与状态的备份文件
+*.bak
+*.bak-*
+*.off
+
 # 编辑器 / 系统
 .vscode/
 .idea/
