@@ -22,6 +22,8 @@
 | **带通配符的删除 / 写入** | `Remove-Item *.log` 这类。命中范围在动手前没法逐项核对。**只读操作不受限**，`Get-ChildItem *.txt` 照常。 |
 | **改插件自己的配置** | 两样都拦：**配置项的值**（开发者模式、档位、开关、免审窗口）只能由你在设置页或斜杠命令里改；**配置文件本身**（profile 的 `cordis.patch.yml`、本插件的 `package.json`）模型写入会被拦。**读不受限**，它照样能看。 |
 
+在「动文件」这件事上，原生工具、`pwsh` / `bash` 命令和 dsh-ops 插件注册的 `ops_*` 工具一视同仁：`ops_remove` 和 `Remove-Item` 撞的是同一套规则，`ops_read_files` 想读 `state/` 一样会被拦死。
+
 ### 四档策略
 
 | 档位 | 命令 | 删除 | 写入 / 改盘 | 盘根 | 系统目录·删 | 系统目录·改 |
@@ -41,7 +43,7 @@
 
 1. **说明**——讲清要动的是什么、有什么用、删掉之后会怎样；确实没影响就直说「可以放心清理」。
 2. **请你放行**——你会在输入框里执行 `/guard-gettoken`，拿到一串 16 位 token，把这串打给它。
-3. **带着 token 重发**——在命令末尾加注释即可：`Remove-Item 'D:\work\old.log' # fg:<那串 token>`。注释不影响执行。
+3. **带着 token 重发**——在命令末尾加注释即可：`Remove-Item 'D:\work\old.log' # fg:<那串 token>`。注释不影响执行。`ops_*` 系列没有命令行，把同样的调用原样重发一遍就行，参数一个都不用改。
 4. 手上还有别的活可以先干完，最后统一汇报，不用一条一条卡着问。
 
 **为什么 token 靠得住**：斜杠命令的输出只进日志，模型上下文里看不到——你执行 `/guard-gettoken` 拿到的东西，它没法自己生成、也没法偷看。
@@ -93,7 +95,8 @@
 **这是软约束，不是安全边界。** 它挡不住一个执意要删东西的模型：
 
 - 换个写法的删除看不见：`[System.IO.File]::Delete()`、`fs.rmSync`、`robocopy /MIR` 覆盖。
-- `write` / `edit` 工具和 `run_code` 根本不走 shell，不在管辖范围。
+- `run_code` 里现拼 JS 删文件不经过任何命令解析，不在管辖范围；`write` / `edit` 只查状态目录和配置文件，写别处不拦。
+- ops 工具靠「工具名 + 参数结构」识别。dsh-ops 改名或改参数时要同步更新守卫——名字里带删除/写入字样的未知 ops 工具已经兜底拦了，改成完全不相干的名字则兜不住。
 - 状态目录的锁靠「看不见」而不是权限——模型换个不把路径写出来的写法（运行时拼字符串、`node -e` 里现拼）就能绕过。
 
 能做的是把门槛抬高，让你有时间踩刹车；真正物理隔离得靠操作系统 ACL，或者相对麻烦点的 `workspace-write` 。
@@ -243,30 +246,35 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 **判定顺序**（`check()`）：
 
 ```
-enabled=false → 放行
-devMode=true  → 只放行普通操作，仍先查盘根/系统目录
-state/ 或配置文件 → 拦死（写入类工具才查配置文件，读放行）
-非 shell 工具   → 记账后放行（write/edit 不在管辖范围）
-抽通配符        → 拦死
-盘根（仅删除）  → 拦死
-protectedHit    → 系统目录
-  ├ high + 系统目录 → 拦死
-  └ 系统目录删除    → 所有档位拦死
-readonly 档      → 只读白名单以外全拦
-low 档           → 删除放行
-high 档          → 删除和写入都拦
-其余             → token 校验 → 拦一次并发 token
+enabled=false        → 放行
+devMode=true         → 只放行普通操作，仍先查盘根/系统目录
+state/ 或配置文件    → 拦死（写入类工具才查配置文件，读放行）
+ops_* 变更工具       → dryRun 放行；否则进入下面同一套判定
+非 shell 工具        → 放行（write/edit 只在 state/配置检查里被查目标路径）
+抽通配符             → 拦死
+盘根（仅删除）       → 拦死
+protectedHit         → 系统目录
+  ├ high + 系统目录  → 拦死
+  └ 系统目录删除     → 所有档位拦死
+readonly 档          → 只读白名单以外全拦
+low 档               → 删除放行
+high 档              → 删除和写入都拦
+其余                 → token 校验 → 拦一次并发 token
 ```
 
 **token**：16 位，字母表去掉 `I O 0 1` 避免抄错；存在 `state/tokens.json`，同一批目标复用同一个 token，用掉即删。识别正则 `#\s*fg[:\-]([A-Za-z0-9]{16})\b`，匹配后从命令里剥掉再解析路径，避免 token 被当成文件名。
 
 **路径归一化**：全小写、反斜杠转正斜杠、去尾斜杠，盘根用 `/^[a-z]:\\$/` 精确判定（不能用 `startsWith('c:\\')`，那会把整块盘锁死）。
 
-**抽不出路径的命令**（`git clean -fdx`、`robocopy /MIR`）按命令原文签名 `cmd:<kind>|<归一化命令>` 绑 token，不给「重发即放行」的退路。
+**抽不出路径的命令**（`git clean -fdx`、`robocopy /MIR`）按命令原文签名 `cmd:<kind>|<归一化命令>` 绑 token，不给「重发即放行」的退路。`ops_batch` 用 `operationsRef` 又没有内联 `operations` 时同理——看不到要动哪些文件，一律按这份签名卡住。
 
-**旁路台账**：只记路径不碰内容。`write`/`edit` 从 `file_path`/`filePath`/`path`/`target`/`filename` 取；shell 命令从 `extractPaths()` 取。目录不收。
+**dsh-ops 工具集**：`ops_remove`、`ops_write_file`、`ops_edit_file`、`ops_replace`、`ops_copy`、`ops_move`、`ops_batch`（`action` 为 `run` / `resume` 时）与 shell 命令同权处理——档位、盘根、系统目录、`state/`、配置文件一律照旧生效；`dryRun: true`、`action=plan` 和只读 ops 工具（`ops_stat`、`ops_grep`、`ops_result` 等）不受影响。路径从 `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir` 取，`ops_batch` 还会把 `operations[].path`、`operations[].to` 按 `root` 拼成绝对路径。`ops_` 前缀硬编码在 `dsh-ops/lib/policy.js`，改不了；名字里带 `remove/move/rename/write/edit/replace/copy/truncate/batch` 的未知 ops 工具也按变更处理，插件升级后不会自动多出后门。
 
-**状态目录保护**：路径匹配三层——绝对路径整串、`dsh-fileguard/state` 片段（挡未归一化的相对路径）、`glob` 的 `pattern`。
+**ops 工具怎么带 token**：它们没有命令行，参数 schema 又是封闭的（`additionalProperties: false`），塞不进 `# fg:<token>`。所以 `/guard-gettoken` 在你看到 token 的那一刻给它打上 `seen` 标记——只有被你亲眼看过的 token 才允许从 ops 通道放行；模型自己去 `state/tokens.json` 翻是拿不到的，那个目录对它拦死。你让它把同样的调用原样重发一遍即可，一个参数都不用改。
+
+**旁路台账**：只记路径不碰内容。`write`/`edit` 从 `file_path`/`filePath`/`path`/`target`/`filename` 取；shell 命令从 `extractPaths()` 取；ops 变更工具从 `targetPathList()` 取。目录不收。
+
+**状态目录保护**：路径匹配三层——绝对路径整串、`dsh-fileguard/state` 片段（挡未归一化的相对路径）、`glob` 的 `pattern`。原生工具、shell 命令、ops 工具走的是同一份路径抽取。
 
 **配置文件保护**（`touchesConfigFile()`）：只对写入类调用生效（shell 工具，或 `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`），读放行。命中条件——命令或目标路径里出现 `cordis.patch.yml`；或同时出现 `package.json` 与 `dsh-fileguard`（不能拦所有 `package.json`，那样正常开发没法干活）。
 
@@ -301,6 +309,8 @@ And even after full-permission mode is on, this plugin can force the model to fi
 | **Deletion / writing with wildcards** | Things like `Remove-Item *.log`. The affected set can't be checked item by item before it runs. **Read-only operations are unrestricted** — `Get-ChildItem *.txt` works as usual. |
 | **Changing the plugin's own configuration** | Both are blocked: **config values** (developer mode, tier, switches, exemption window) can only be changed by you in the settings page or via slash commands; **the config files themselves** (the profile's `cordis.patch.yml`, this plugin's `package.json`) can't be written by the model. **Reads are unrestricted** — it can still look. |
 
+For anything that "touches files", native tools, `pwsh` / `bash` commands and the `ops_*` tools registered by the dsh-ops plugin are all treated the same: `ops_remove` hits exactly the same rules as `Remove-Item`, and `ops_read_files` trying to read `state/` is blocked just the same.
+
 ### The four tiers
 
 | Tier | Command | Delete | Write / modify | Drive root | System dir · delete | System dir · modify |
@@ -320,7 +330,7 @@ The model receives a prompt and will be asked to:
 
 1. **Explain** — state clearly what it's about to touch, what that's for, and what happens after deletion; if there really is no impact, say plainly "safe to clean up".
 2. **Ask you to allow it** — you run `/guard-gettoken` in the input box, get a 16-character token, and type that token to the model.
-3. **Resend with the token** — just append a comment to the command: `Remove-Item 'D:\work\old.log' # fg:<the token>`. Comments don't affect execution.
+3. **Resend with the token** — just append a comment to the command: `Remove-Item 'D:\work\old.log' # fg:<the token>`. Comments don't affect execution. The `ops_*` tools have no command line: just resend the exact same call, not a single parameter needs changing.
 4. Finish other work in hand first and report together at the end; there's no need to stop and ask one at a time.
 
 **Why the token can be trusted**: the output of slash commands goes only to the log and is not visible in the model's context — what you get from `/guard-gettoken` is something it can neither generate itself nor peek at.
@@ -372,7 +382,8 @@ Tier, window, and switches are **not** in `state/` — they live in the plugin c
 **This is a soft constraint, not a security boundary.** It cannot stop a model determined to delete something:
 
 - Deletions written differently are invisible: `[System.IO.File]::Delete()`, `fs.rmSync`, overwriting via `robocopy /MIR`.
-- The `write` / `edit` tools and `run_code` don't go through a shell at all and are out of scope.
+- The `run_code` tool can delete files by assembling JavaScript on the fly, with no command parsing involved, so it is out of scope; `write` / `edit` only check the state directory and config files, and writing anywhere else isn't blocked.
+- The ops tools are recognised by "tool name + argument shape". If dsh-ops renames them or changes their arguments, the guard has to be updated — unknown ops tools whose names carry delete/write wording are already caught by the fallback, but names that look nothing like it are not.
 - The state directory lock relies on "invisibility" rather than permissions — the model can bypass it by writing the path differently (assembling strings at runtime, building them on the fly inside `node -e`).
 
 What it can do is raise the bar so you have time to hit the brakes; real physical isolation has to come from OS ACLs, or from the somewhat more troublesome `workspace-write`.
@@ -517,7 +528,8 @@ Drive roots are not in this list — they're determined separately by a regex, a
 enabled=false → allow
 devMode=true  → allow ordinary operations only, still check drive roots / system dirs first
 state/ or config file → hard block (config files only for write-type tools; reads allowed)
-non-shell tool → record in ledger, then allow (write/edit out of scope)
+ops_* mutation tool → allow dryRun; otherwise fall through to the same checks below
+non-shell tool → allow (write/edit targets are only inspected by the state/config checks)
 wildcard detected → hard block
 drive root (delete only) → hard block
 protectedHit → system directories
@@ -533,11 +545,15 @@ otherwise → token check → block once and issue a token
 
 **Path normalization**: lowercase, backslashes to forward slashes, trailing slash removed; drive roots are matched exactly with `/^[a-z]:\\$/` (never `startsWith('c:\\')`, which would lock the entire drive).
 
-**Commands whose paths can't be extracted** (`git clean -fdx`, `robocopy /MIR`) bind the token to a signature of the command text `cmd:<kind>|<normalized command>`, leaving no "resend and it passes" escape hatch.
+**Commands whose paths can't be extracted** (`git clean -fdx`, `robocopy /MIR`) bind the token to a signature of the command text `cmd:<kind>|<normalized command>`, leaving no "resend and it passes" escape hatch. The same applies to `ops_batch` with an `operationsRef` and no inline `operations` — when it's impossible to see which files are affected, the call is held to that signature.
 
-**Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`. Directories are not accepted.
+**The dsh-ops tool set**: `ops_remove`, `ops_write_file`, `ops_edit_file`, `ops_replace`, `ops_copy`, `ops_move` and `ops_batch` (when `action` is `run` / `resume`) are handled with the same authority as shell commands — tiers, drive roots, system directories, `state/` and config files all apply exactly as before; `dryRun: true`, `action=plan` and the read-only ops tools (`ops_stat`, `ops_grep`, `ops_result`, ...) are unaffected. Paths are taken from `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir`, and `ops_batch` additionally joins `operations[].path` and `operations[].to` onto `root` as absolute paths. The `ops_` prefix is hardcoded in `dsh-ops/lib/policy.js` and can't be changed; unknown ops tools whose names contain `remove/move/rename/write/edit/replace/copy/truncate/batch` are also treated as mutations, so a plugin upgrade can't quietly open a new back door.
 
-**State directory protection**: path matching at three levels — the whole absolute path, the `dsh-fileguard/state` segment (catching unnormalized relative paths), and the `glob` `pattern`.
+**How ops tools carry a token**: they have no command line, and their argument schemas are closed (`additionalProperties: false`), so `# fg:<token>` cannot be smuggled in. Instead, `/guard-gettoken` marks the token as `seen` at the moment you see it — only a token you have personally laid eyes on may pass through the ops channel; the model can't fetch it from `state/tokens.json`, which is hard-blocked for it. Just have it resend the identical call, without changing a single parameter.
+
+**Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`; for ops mutation tools from `targetPathList()`. Directories are not accepted.
+
+**State directory protection**: path matching at three levels — the whole absolute path, the `dsh-fileguard/state` segment (catching unnormalized relative paths), and the `glob` `pattern`. Native tools, shell commands and ops tools all go through the same path extraction.
 
 **Config file protection** (`touchesConfigFile()`): applies only to write-type calls (shell tools, or `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`); reads pass. Match condition — `cordis.patch.yml` appears in the command or target path; or both `package.json` and `dsh-fileguard` appear (blocking every `package.json` would make normal development impossible).
 
@@ -572,6 +588,8 @@ MIT, see [LICENSE](./LICENSE).
 | **Удаление / запись с подстановочными знаками** | Вроде `Remove-Item *.log`. Проверить каждую затронутую единицу до выполнения невозможно. **Операции только для чтения не ограничены** — `Get-ChildItem *.txt` работает как обычно. |
 | **Изменение собственной конфигурации плагина** | Блокируется и то, и другое: **значения параметров** (режим разработчика, уровень, переключатели, окно освобождения от подтверждения) можете менять только вы — на странице настроек или слэш-командами; **сами файлы конфигурации** (профильный `cordis.patch.yml`, `package.json` этого плагина) модель записать не может. **Чтение не ограничено** — смотреть она может. |
 
+В вопросах «трогать файлы» нативные инструменты, команды `pwsh` / `bash` и инструменты `ops_*`, регистрируемые плагином dsh-ops, обрабатываются одинаково: `ops_remove` натыкается на те же правила, что и `Remove-Item`, а `ops_read_files`, пытающийся прочитать `state/`, блокируется так же жёстко.
+
 ### Четыре уровня политики
 
 | Уровень | Команда | Удаление | Запись / изменение | Корень диска | Сист. каталог · удаление | Сист. каталог · изменение |
@@ -591,7 +609,7 @@ MIT, see [LICENSE](./LICENSE).
 
 1. **Объяснить** — чётко сказать, что именно она собирается затронуть, зачем это нужно и что будет после удаления; если влияния действительно нет, прямо сказать «можно спокойно чистить».
 2. **Попросить у вас разрешение** — вы выполняете `/guard-gettoken` в поле ввода, получаете 16-символьный токен и передаёте эту строку модели.
-3. **Повторить с токеном** — достаточно добавить комментарий в конце команды: `Remove-Item 'D:\work\old.log' # fg:<этот токен>`. Комментарий не влияет на выполнение.
+3. **Повторить с токеном** — достаточно добавить комментарий в конце команды: `Remove-Item 'D:\work\old.log' # fg:<этот токен>`. Комментарий не влияет на выполнение. У инструментов `ops_*` нет командной строки: просто повторите тот же вызов без изменений, ни один параметр менять не нужно.
 4. Остальные дела можно сначала доделать и отчитаться обо всём сразу в конце; останавливаться и спрашивать по одному не нужно.
 
 **Почему токену можно доверять**: вывод слэш-команд попадает только в лог и не виден в контексте модели — то, что вы получаете через `/guard-gettoken`, она не может ни сгенерировать сама, ни подсмотреть.
@@ -643,7 +661,8 @@ MIT, see [LICENSE](./LICENSE).
 **Это мягкое ограничение, а не граница безопасности.** Оно не остановит модель, которая во что бы то ни стало решила что-то удалить:
 
 - Удаление, записанное иначе, не видно: `[System.IO.File]::Delete()`, `fs.rmSync`, перезапись через `robocopy /MIR`.
-- Инструменты `write` / `edit` и `run_code` вообще не проходят через shell и находятся вне зоны действия.
+- Инструмент `run_code` может удалять файлы, собирая JavaScript на ходу, без какого-либо разбора команд, поэтому он вне зоны действия; `write` / `edit` проверяют только каталог состояния и файлы конфигурации, запись в другие места не блокируется.
+- Инструменты ops распознаются по «имени инструмента + структуре аргументов». Если dsh-ops переименует их или изменит аргументы, защиту придётся обновить: неизвестные ops-инструменты, в имени которых есть слова об удалении/записи, ловятся запасным правилом, а вот совсем непохожие имена — нет.
 - Замок на каталог состояния держится на «невидимости», а не на правах доступа — модель обойдёт его, если запишет путь иначе (склеит строку во время выполнения, соберёт прямо в `node -e`).
 
 Всё, что можно сделать, — поднять планку, чтобы у вас было время затормозить; настоящая физическая изоляция достигается только средствами ACL операционной системы или более хлопотным `workspace-write`.
@@ -788,7 +807,8 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 enabled=false → пропустить
 devMode=true  → пропускать только обычные операции, но сначала по-прежнему проверять корни дисков / системные каталоги
 state/ или файл конфигурации → жёсткая блокировка (файлы конфигурации проверяются только для пишущих инструментов; чтение пропускается)
-не-shell инструмент → записать в реестр, затем пропустить (write/edit вне зоны действия)
+ops_* изменяющий инструмент → пропустить dryRun; иначе перейти к тем же проверкам ниже
+не-shell инструмент → пропустить (целевые пути write/edit проверяются только в проверках state/конфигурации)
 обнаружен подстановочный знак → жёсткая блокировка
 корень диска (только удаление) → жёсткая блокировка
 protectedHit → системные каталоги
@@ -804,11 +824,15 @@ protectedHit → системные каталоги
 
 **Нормализация путей**: всё в нижний регистр, обратные слэши в прямые, завершающий слэш убирается; корни дисков определяются точным совпадением с `/^[a-z]:\\$/` (нельзя `startsWith('c:\\')` — это заблокирует весь диск).
 
-**Команды, у которых пути не извлекаются** (`git clean -fdx`, `robocopy /MIR`), привязывают токен к подписи текста команды `cmd:<kind>|<нормализованная команда>`, не оставляя лазейки «повторил — и прошло».
+**Команды, у которых пути не извлекаются** (`git clean -fdx`, `robocopy /MIR`), привязывают токен к подписи текста команды `cmd:<kind>|<нормализованная команда>`, не оставляя лазейки «повторил — и прошло». То же самое относится к `ops_batch` с `operationsRef` и без встроенного `operations` — когда невозможно увидеть, какие файлы затрагиваются, вызов привязывается к этой подписи.
 
-**Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`. Каталоги не принимаются.
+**Набор инструментов dsh-ops**: `ops_remove`, `ops_write_file`, `ops_edit_file`, `ops_replace`, `ops_copy`, `ops_move` и `ops_batch` (когда `action` равен `run` / `resume`) обрабатываются с теми же полномочиями, что и shell-команды — уровни, корни дисков, системные каталоги, `state/` и файлы конфигурации действуют ровно так же; `dryRun: true`, `action=plan` и инструменты ops только для чтения (`ops_stat`, `ops_grep`, `ops_result`, ...) не затрагиваются. Пути берутся из `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir`, а `ops_batch` дополнительно склеивает `operations[].path` и `operations[].to` с `root` в абсолютные пути. Префикс `ops_` жёстко зашит в `dsh-ops/lib/policy.js` и не меняется; неизвестные ops-инструменты, в имени которых есть `remove/move/rename/write/edit/replace/copy/truncate/batch`, тоже считаются изменяющими, так что обновление плагина не откроет тихо новую лазейку.
 
-**Защита каталога состояния**: сопоставление путей в три слоя — весь абсолютный путь, фрагмент `dsh-fileguard/state` (ловит ненормализованные относительные пути) и `pattern` у `glob`.
+**Как инструменты ops несут токен**: у них нет командной строки, а схемы аргументов закрыты (`additionalProperties: false`), поэтому `# fg:<token>` туда не подложить. Вместо этого `/guard-gettoken` помечает токен как `seen` в тот момент, когда вы его увидели — через канал ops может пройти только токен, который вы лично видели; модель не достанет его из `state/tokens.json`, который для неё жёстко заблокирован. Просто попросите её повторить тот же вызов, не меняя ни одного параметра.
+
+**Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`; для изменяющих инструментов ops — из `targetPathList()`. Каталоги не принимаются.
+
+**Защита каталога состояния**: сопоставление путей в три слоя — весь абсолютный путь, фрагмент `dsh-fileguard/state` (ловит ненормализованные относительные пути) и `pattern` у `glob`. Нативные инструменты, shell-команды и инструменты ops проходят через одно и то же извлечение путей.
 
 **Защита файлов конфигурации** (`touchesConfigFile()`): действует только для пишущих вызовов (shell-инструменты, или `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`), чтение пропускается. Условие срабатывания — `cordis.patch.yml` встречается в команде или целевом пути; либо одновременно встречаются `package.json` и `dsh-fileguard` (блокировать все `package.json` нельзя — тогда нормальная разработка станет невозможной).
 
@@ -843,6 +867,8 @@ MIT, см. [LICENSE](./LICENSE).
 | **ワイルドカードを含む削除 / 書き込み** | `Remove-Item *.log` のようなもの。対象範囲を実行前に一つずつ確認できません。**読み取り専用の操作は制限されません** — `Get-ChildItem *.txt` は通常どおり。 |
 | **プラグイン自身の設定変更** | 両方ブロックします：**設定値**（開発者モード、レベル、スイッチ、審査免除の時間枠）は設定ページかスラッシュコマンドからあなただけが変更できます；**設定ファイルそのもの**（profile の `cordis.patch.yml`、このプラグインの `package.json`）へのモデルの書き込みはブロックします。**読み取りは制限されません** — 見ることはできます。 |
 
+「ファイルに触る」ことに関しては、ネイティブツール、`pwsh` / `bash` コマンド、そして dsh-ops プラグインが登録する `ops_*` ツールをすべて同じに扱います。`ops_remove` は `Remove-Item` とまったく同じルールに当たり、`ops_read_files` が `state/` を読もうとしても同じように完全ブロックされます。
+
 ### 4つのレベル
 
 | レベル | コマンド | 削除 | 書き込み / 変更 | ドライブのルート | システムディレクトリ · 削除 | システムディレクトリ · 変更 |
@@ -862,7 +888,7 @@ MIT, см. [LICENSE](./LICENSE).
 
 1. **説明** — 何を触ろうとしているのか、何のためか、削除したらどうなるかを明確に伝える。本当に影響がないなら「そのまま削除して問題ありません」と正直に言う。
 2. **許可を求める** — あなたが入力欄で `/guard-gettoken` を実行し、16 文字のトークンを取得して、その文字列をモデルに渡します。
-3. **トークンを付けて再送** — コマンドの末尾にコメントを足すだけ：`Remove-Item 'D:\work\old.log' # fg:<そのトークン>`。コメントは実行に影響しません。
+3. **トークンを付けて再送** — コマンドの末尾にコメントを足すだけ：`Remove-Item 'D:\work\old.log' # fg:<そのトークン>`。コメントは実行に影響しません。`ops_*` 系にはコマンドラインがないので、同じ呼び出しをそのまま再送するだけです。パラメータを一つも変える必要はありません。
 4. 他に手元の作業があれば先に片付け、最後にまとめて報告してよい。一件ずつ止まって聞く必要はありません。
 
 **トークンが信頼できる理由**：スラッシュコマンドの出力はログにだけ残り、モデルのコンテキストには見えません — `/guard-gettoken` で得たものは、モデルが自分で生成することも盗み見ることもできないのです。
@@ -914,7 +940,8 @@ MIT, см. [LICENSE](./LICENSE).
 **これはソフトな制約であり、セキュリティ境界ではありません。** 何としても削除しようとするモデルは止められません：
 
 - 別の書き方の削除は見えません：`[System.IO.File]::Delete()`、`fs.rmSync`、`robocopy /MIR` による上書き。
-- `write` / `edit` ツールと `run_code` は shell を経由しないため、管轄外です。
+- `run_code` はその場で JavaScript を組み立ててファイルを削除でき、コマンド解析を一切通らないため管轄外です。`write` / `edit` は状態ディレクトリと設定ファイルだけを確認し、それ以外の場所への書き込みはブロックしません。
+- ops ツールは「ツール名 + 引数の構造」で識別しています。dsh-ops が名前や引数を変えたらガード側も更新が必要です。削除・書き込みを思わせる語を含む未知の ops ツールは予備ルールで拾いますが、まったく似ていない名前に変わると拾えません。
 - 状態ディレクトリのロックは権限ではなく「見えないこと」に頼っています — モデルがパスを書かない形（実行時に文字列を組み立てる、`node -e` の中でその場で組む）に変えれば回避できます。
 
 できるのはハードルを上げて、あなたがブレーキを踏む時間を作ることです。本当の物理的隔離は OS の ACL か、やや面倒な `workspace-write` に頼るしかありません。
@@ -1059,7 +1086,8 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 enabled=false → 通過
 devMode=true  → 通常操作のみ通過。ただし先にドライブのルート / システムディレクトリを確認
 state/ または設定ファイル → 完全ブロック（設定ファイルは書き込み系ツールのみ確認、読み取りは通過）
-shell 以外のツール → 台帳に記録して通過（write/edit は管轄外）
+ops_* の変更系ツール → dryRun なら通過、それ以外は下の同じ判定へ
+shell 以外のツール → 通過（write/edit の対象パスは状態/設定の確認でだけ見る）
 ワイルドカード検出 → 完全ブロック
 ドライブのルート（削除時のみ） → 完全ブロック
 protectedHit → システムディレクトリ
@@ -1075,11 +1103,15 @@ high レベル → 削除も書き込みもブロック
 
 **パスの正規化**：すべて小文字化、バックスラッシュをスラッシュへ、末尾スラッシュを削除。ドライブのルートは `/^[a-z]:\\$/` で厳密に判定（`startsWith('c:\\')` は不可 — ディスク全体をロックしてしまう）。
 
-**パスを抽出できないコマンド**（`git clean -fdx`、`robocopy /MIR`）は、コマンド原文の署名 `cmd:<kind>|<正規化コマンド>` にトークンを結びつけ、「再送すれば通る」という抜け道を残しません。
+**パスを抽出できないコマンド**（`git clean -fdx`、`robocopy /MIR`）は、コマンド原文の署名 `cmd:<kind>|<正規化コマンド>` にトークンを結びつけ、「再送すれば通る」という抜け道を残しません。`ops_batch` が `operationsRef` を使い、インラインの `operations` を持たない場合も同じです — どのファイルが対象か見えないときは、この署名に縛ります。
 
-**バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得。ディレクトリは受け付けません。
+**dsh-ops ツール群**：`ops_remove`、`ops_write_file`、`ops_edit_file`、`ops_replace`、`ops_copy`、`ops_move`、および `ops_batch`（`action` が `run` / `resume` のとき）は shell コマンドと同じ権限で扱います — レベル、ドライブのルート、システムディレクトリ、`state/`、設定ファイルがこれまでどおり効きます。`dryRun: true`、`action=plan`、読み取り専用の ops ツール（`ops_stat`、`ops_grep`、`ops_result` など）は影響を受けません。パスは `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir` から取り、`ops_batch` はさらに `operations[].path` と `operations[].to` を `root` に結合して絶対パスにします。`ops_` の接頭辞は `dsh-ops/lib/policy.js` にハードコードされていて変更できません。名前に `remove/move/rename/write/edit/replace/copy/truncate/batch` を含む未知の ops ツールも変更系として扱うので、プラグインの更新で静かに新しい抜け道が開くことはありません。
 
-**状態ディレクトリの保護**：パス照合は三層 — 絶対パス全体、`dsh-fileguard/state` の断片（正規化されていない相対パスを捕捉）、`glob` の `pattern`。
+**ops ツールがトークンをどう受け取るか**：コマンドラインがなく、引数のスキーマも閉じている（`additionalProperties: false`）ため、`# fg:<token>` を紛れ込ませることはできません。代わりに `/guard-gettoken` が、あなたがトークンを見たその瞬間に `seen` の印を付けます — ops の経路を通れるのは、あなた自身が目にしたトークンだけです。モデルが `state/tokens.json` から取り出すことはできません（そのディレクトリはモデルに対して完全ブロックです）。同じ呼び出しをパラメータ一つ変えずに再送させるだけで済みます。
+
+**バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得；ops の変更系ツールは `targetPathList()` から取得。ディレクトリは受け付けません。
+
+**状態ディレクトリの保護**：パス照合は三層 — 絶対パス全体、`dsh-fileguard/state` の断片（正規化されていない相対パスを捕捉）、`glob` の `pattern`。ネイティブツール、shell コマンド、ops ツールは同じパス抽出を通ります。
 
 **設定ファイルの保護**（`touchesConfigFile()`）：書き込み系の呼び出しにのみ有効（shell ツール、または `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`）。読み取りは通過。発動条件 — コマンドまたは対象パスに `cordis.patch.yml` が現れる；または `package.json` と `dsh-fileguard` が同時に現れる（すべての `package.json` をブロックすると通常の開発ができなくなるため）。
 
