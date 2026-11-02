@@ -1,10 +1,13 @@
 # dsh-fileguard
 
+**语言 / Languages：** [简体中文](#dsh-fileguard) · [English](#english) · [Русский](#русский) · [日本語](#日本語)
+
 给 **DeepSeek Harness** 用的文件守卫插件。
 
-模型动手删东西、改东西之前先拦一道，逼它停下来把「动的是什么、有什么用、删了会怎样」用中文讲清楚，再由你决定放不放行。模型自己干活时产生的临时文件走旁路台账，窗口期内免审，不打扰你。
+在全权模式下，模型动手删东西、改东西之前先拦一道，逼它停下来把「动的是什么、有什么用、删改了会怎样」用自然语言讲清楚，再由你用token（相当于钥匙）决定放不放行。模型自己干活时产生的临时文件走旁路台账，窗口期内免审，不打扰你。
 
-它解决的具体问题：DSH 开 `workspace-write` 之后，真正拦危险操作的是系统提权确认框，而那个框里全是英文路径和一串 `$ % #` 符号，扫一眼判断不了点下去会发生什么，手一快就同意了。这个插件在弹窗之前先给一份能看懂的中文说明。
+它解决的具体问题：DSH 开 `workspace-write` 之后，真正拦危险操作的是系统提权确认框，而那个框里全是英文路径和一串 `$ % #` 符号，扫一眼判断不了点下去会发生什么，手一快就同意了。
+而即使是打开全权模式后，这个插件可以强制模型先调研文件内容，给一份能看懂的，按风险分层次的自然语言说明，而决定权交还给你。（哪怕这会多用一点点token余额，但这也理应是值得的...）
 
 ---
 
@@ -34,7 +37,7 @@
 
 ### 拦一次之后会发生什么
 
-模型会收到一段提示词，要求它：
+模型会收到一段提示词，它将会被要求：
 
 1. **说明**——讲清要动的是什么、有什么用、删掉之后会怎样；确实没影响就直说「可以放心清理」。
 2. **请你放行**——你会在输入框里执行 `/guard-gettoken`，拿到一串 16 位 token，把这串打给它。
@@ -43,9 +46,9 @@
 
 **为什么 token 靠得住**：斜杠命令的输出只进日志，模型上下文里看不到——你执行 `/guard-gettoken` 拿到的东西，它没法自己生成、也没法偷看。
 
-### AI 自己写的临时文件：免审
+### AI 自己写的临时文件：在一定时间内免审
 
-模型干活会造一堆一次性的东西（探测脚本、截图、日志）。删这些还要问一次纯属互相折磨。
+模型干活会造一堆一次性的东西（探测脚本、截图、日志等）。删这些还要问一次纯属互相折磨。
 
 插件维护一份旁路台账，记下模型写过哪些路径：
 
@@ -93,7 +96,7 @@
 - `write` / `edit` 工具和 `run_code` 根本不走 shell，不在管辖范围。
 - 状态目录的锁靠「看不见」而不是权限——模型换个不把路径写出来的写法（运行时拼字符串、`node -e` 里现拼）就能绕过。
 
-能做的是把门槛抬高，让你有时间踩刹车；真正物理隔离得靠操作系统 ACL。
+能做的是把门槛抬高，让你有时间踩刹车；真正物理隔离得靠操作系统 ACL，或者相对麻烦点的 `workspace-write` 。
 
 ---
 
@@ -201,7 +204,7 @@ commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /gua
 | `policy` | string | `"default"` | 守卫强度：`low` / `default` / `high` / `readonly` |
 | `tempHours` | number | `8` | AI 临时文件免审窗口（小时）。`0` = 关掉这个机制，上限 720 |
 | `hintResetAt` | number | `0` | 提示词初始化：改成新时间戳后，「只出现一次」的说明会重新出现 |
-| `devMode` | boolean | `false` | 开发者模式：放行普通删改、`state/` 目录、插件自己的配置文件，只记日志。**盘根和系统目录仍然硬拦** |
+| `devMode` | boolean | `false` | 开发者模式：放行普通删改、`state/` 目录、插件自己的配置文件（这样也许能更方便地对Agent许愿帮你定制化这个插件，但这也会变得很危险），只记日志。**盘根和系统目录仍然硬拦** |
 | `protectedDirs` | string[] | 见下 | 额外保护的目录，含其下全部内容 |
 | `readOnlyMode` | boolean | `false` | 等同 `policy: "readonly"`，保留兼容旧配置 |
 
@@ -274,3 +277,816 @@ high 档          → 删除和写入都拦
 ## 许可
 
 MIT，见 [LICENSE](./LICENSE)。
+
+---
+
+# English
+
+A file-guard plugin for **DeepSeek Harness**.
+
+In full-permission mode, it steps in before the model deletes or modifies anything, forcing it to stop and explain in plain language "what this is, what it's used for, and what happens if it's deleted or changed" — then you decide whether to let it through with a token (essentially a key). Temporary files the model produces while working go through a bypass ledger and are exempt from review within a time window, so you aren't disturbed.
+
+The concrete problem it solves: once DSH enables `workspace-write`, the thing actually blocking dangerous operations is the system elevation confirmation dialog — but that dialog is all English paths and a string of `$ % #` symbols. One glance isn't enough to tell what will happen when you click, and a moment of haste is all it takes to approve.
+
+And even after full-permission mode is on, this plugin can force the model to first investigate the file contents and hand you a readable, risk-tiered, plain-language explanation — giving the decision back to you. (It costs a bit of extra token budget, but that should be worth it...)
+
+## One by one, in plain terms
+
+### Hard limits: these four are never allowed
+
+| Category | Description |
+|---|---|
+| **Deleting a drive root** | `C:\` `D:\` `E:\`, the root of a plugged-in USB drive... the root directory of any drive. Deleting it means wiping the whole disk. **Applies to deletion only** — copying files into a drive root or listing it is not blocked. |
+| **Deleting inside system directories** | `C:\Windows`, `Program Files`, `ProgramData`, `$Recycle.Bin`, `Recovery`, etc. **Hard-blocked in every tier and every mode, including developer mode.** |
+| **Deletion / writing with wildcards** | Things like `Remove-Item *.log`. The affected set can't be checked item by item before it runs. **Read-only operations are unrestricted** — `Get-ChildItem *.txt` works as usual. |
+| **Changing the plugin's own configuration** | Both are blocked: **config values** (developer mode, tier, switches, exemption window) can only be changed by you in the settings page or via slash commands; **the config files themselves** (the profile's `cordis.patch.yml`, this plugin's `package.json`) can't be written by the model. **Reads are unrestricted** — it can still look. |
+
+### The four tiers
+
+| Tier | Command | Delete | Write / modify | Drive root | System dir · delete | System dir · modify |
+|---|---|---|---|---|---|---|
+| Read-only allowlist | `/guard-readonly` | Block | Block | Block | Block | Block |
+| High interception | `/guard-high` | Block once | Block once | Block | Block | Block |
+| Default | `/guard-default` | Block once | Allow | Block | Block | Block once |
+| Low guard | `/guard-low` | Allow | Allow | Block | Block | Block once |
+
+- **Block** = no amount of resending gets it through, and the message explicitly says "don't try again".
+- **Block once** = the plugin stops it and issues a **one-time token**. The model must get that token from you and resend with it to be allowed. The token covers only the targets blocked this time, and is discarded once used.
+- **Allow** = executes directly; the model sees no message.
+
+### What happens after a "block once"
+
+The model receives a prompt and will be asked to:
+
+1. **Explain** — state clearly what it's about to touch, what that's for, and what happens after deletion; if there really is no impact, say plainly "safe to clean up".
+2. **Ask you to allow it** — you run `/guard-gettoken` in the input box, get a 16-character token, and type that token to the model.
+3. **Resend with the token** — just append a comment to the command: `Remove-Item 'D:\work\old.log' # fg:<the token>`. Comments don't affect execution.
+4. Finish other work in hand first and report together at the end; there's no need to stop and ask one at a time.
+
+**Why the token can be trusted**: the output of slash commands goes only to the log and is not visible in the model's context — what you get from `/guard-gettoken` is something it can neither generate itself nor peek at.
+
+### Temporary files the AI wrote itself: exempt for a limited time
+
+When working, the model produces a pile of one-off things (probe scripts, screenshots, logs, etc.). Asking again just to delete them is mutual torture.
+
+The plugin keeps a bypass ledger recording which paths the model wrote:
+
+- recorded when tools such as `write` / `edit` write a file;
+- recorded when commands such as `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` run, capturing the paths appearing in the command;
+- deleting those paths afterwards is allowed directly under the **low guard / default** tiers.
+
+**Only paths registered in the ledger are recognized** — files you created yourself aren't on it and still need confirmation. That's also why it doesn't touch file contents and doesn't look at creation times.
+
+Four limits:
+
+1. **Directories are not exempt**: a freshly cloned repo or a just-unpacked package also gets recorded in the ledger, but a wrong deletion is expensive, so it always goes through confirmation.
+2. **Wildcards are not exempt.**
+3. **Not in effect under the high-interception / read-only allowlist tiers.**
+4. **The window is limited**: 8 hours by default, after which the exemption no longer applies; the ledger holds at most 5000 entries, and the oldest are evicted by time once it overflows.
+
+Adjust the window with `/guard-temp`:
+
+| Command | Effect |
+|---|---|
+| `/guard-temp` | Cycle: 1 → 4 → 8 → 24 → 72 → off |
+| `/guard-temp 12` | Set directly to 12 hours |
+| `/guard-temp 0` | Turn this mechanism off |
+
+### The state directory
+
+The plugin keeps what must stay secret in `state/` under the plugin directory:
+
+| File | Contents |
+|---|---|
+| `tokens.json` | Pending approval tokens and the targets they authorize |
+| `ai-created.json` | The bypass ledger |
+
+**Any access to this directory is hard-blocked by the guard, reads included.** Whatever the tier and whatever the tool, all are refused. The reason: all of this guard's authority lives in these two files; if the model could glance at them, there would be no guard at all.
+
+Tier, window, and switches are **not** in `state/` — they live in the plugin config (the profile's `cordis.patch.yml` layer), which is why the settings page can change them. That **config file itself is protected too**: if the model tries to modify `cordis.patch.yml` or this plugin's `package.json` directly with `Set-Content` / `edit`, it is likewise blocked (reads are not blocked). Both routes are sealed; the only thing it can move is commands in the chat box — and the values those commands change are ultimately clicked by you.
+
+**How you change it yourself**: the guard blocks the model, not you. A click in the settings page is the easiest; editing the config file directly or using `/guard-*` commands also works.
+
+### Known boundaries
+
+**This is a soft constraint, not a security boundary.** It cannot stop a model determined to delete something:
+
+- Deletions written differently are invisible: `[System.IO.File]::Delete()`, `fs.rmSync`, overwriting via `robocopy /MIR`.
+- The `write` / `edit` tools and `run_code` don't go through a shell at all and are out of scope.
+- The state directory lock relies on "invisibility" rather than permissions — the model can bypass it by writing the path differently (assembling strings at runtime, building them on the fly inside `node -e`).
+
+What it can do is raise the bar so you have time to hit the brakes; real physical isolation has to come from OS ACLs, or from the somewhat more troublesome `workspace-write`.
+
+## Installation
+
+**Prerequisite**: the plugin directory must be able to resolve `@deepseek-ai/schemastery` (a dependency provided by the host). When installing into a profile with `link:`, if the plugin isn't under the profile's `node_modules` search path, you must add a junction manually — see "Dependency pitfall" below.
+
+### Option 1: install from a local directory (most reliable)
+
+```powershell
+dsh plugin --profile <profile-name> add <absolute path to this repo>
+```
+
+### Option 2: mount manually
+
+1. Put the repo anywhere, e.g. `~/.dsh/plugins/dsh-fileguard`.
+2. Add two things to the target profile's `package.json`:
+
+   ```jsonc
+   {
+     "dependencies": {
+       "dsh-fileguard": "link:<absolute path to repo>"
+     },
+     "dsh": {
+       "profile": {
+         "bundles": [ ..., "dsh-fileguard" ]      // ← must be registered, otherwise it won't load
+       }
+     }
+   }
+   ```
+
+3. Run `pnpm install` in the profile directory.
+4. Restart DSH.
+
+### Dependency pitfall (must read)
+
+If there is no `node_modules/@deepseek-ai` under the plugin directory, module loading reports:
+
+```
+ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'
+```
+
+`link:` only solves "can the package be found"; imports inside the package walk up from the real path to find `node_modules`. Add a junction:
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "<plugin dir>\node_modules\@deepseek-ai" `
+  -Target "<profile dir>\node_modules\@deepseek-ai"
+```
+
+### How to mount: use bundles, not `- insert:`
+
+Forcing the plugin into the profile's `cordis.patch.yml` with `- insert:` makes the loader record it as `include:dsh-fileguard`; **`configEditor` refuses to write to such an entry**, and both the settings page and slash commands report `Configuration for "dsh-fileguard" is overridden by a home patch`.
+
+The right way is to register the package name in `dsh.profile.bundles` (see option 2, step 2 above); leave at most a switch in `cordis.patch.yml`:
+
+```yaml
+- id: dsh-fileguard
+  disabled: false
+```
+
+### Verify the installation
+
+After restarting, check the log (default `%TEMP%\dsh-fileguard.log`); there should be two lines:
+
+```
+apply; tools=object enabled=true policy=default
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+```
+
+Only the first line = the plugin loaded but commands weren't registered (the `commands` service became ready after 20 seconds); neither line = the plugin didn't load.
+
+A "**File Guard**" entry should appear on the left side of the settings page.
+
+## Let an agent install it for you
+
+Send the following straight to the agent:
+
+> Install the dsh-fileguard plugin for me:
+> 1. Put the repo at `~/.dsh/plugins/dsh-fileguard`.
+> 2. In the profile's `package.json`, add `"dsh-fileguard": "link:<path>"` to dependencies, and append `"dsh-fileguard"` to the end of `dsh.profile.bundles`.
+> 3. If there is no `node_modules/@deepseek-ai` under the plugin directory, create a junction pointing to the same directory in the profile.
+> 4. Run `pnpm install` in the profile directory.
+> 5. Don't mount it via `cordis.patch.yml`'s `- insert:`; that would make the config unwritable.
+> 6. Let me restart DSH, then check whether the log has the two lines `apply;` and `commands:`.
+>
+> **When done, tell me:**
+> - The settings page has a new "File Guard" section on the left, where I can change the switches, tier, temporary-file exemption window, prompt reset, and developer mode.
+> - When a command is blocked normally, I need to type `/guard-gettoken` in the chat box to get a token for it.
+> - The tier can be switched anytime with `/guard-low` `/guard-default` `/guard-high` `/guard-readonly`, or directly from the settings page.
+> - For debugging I can temporarily loosen it with `/guard-dev on` (drive roots and system directories are still blocked); remember to `/guard-dev off` afterwards.
+> - This is a soft constraint, not a security boundary; don't expect it to stop a model determined to delete something.
+
+## Configuration fields
+
+All can be changed in **Settings → File Guard**, or written into the profile's `cordis.patch.yml`.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Master switch. When off, all commands pass directly — as if not installed |
+| `policy` | string | `"default"` | Guard strength: `low` / `default` / `high` / `readonly` |
+| `tempHours` | number | `8` | AI temporary-file exemption window (hours). `0` = turn the mechanism off; max 720 |
+| `hintResetAt` | number | `0` | Prompt initialization: change to a new timestamp and the "show once" explanation appears again |
+| `devMode` | boolean | `false` | Developer mode: allows ordinary deletions/modifications, the `state/` directory, and the plugin's own config files (this may make it easier to ask an agent to customize the plugin for you, but it also becomes very dangerous); only logged. **Drive roots and system directories are still hard-blocked** |
+| `protectedDirs` | string[] | see below | Additional protected directories, including everything beneath them |
+| `readOnlyMode` | boolean | `false` | Equivalent to `policy: "readonly"`; kept for compatibility with old configs |
+
+The default value of `protectedDirs` is derived from system environment variables and usually contains:
+
+```
+C:\Windows  C:\Program Files  C:\Program Files (x86)  C:\ProgramData
+C:\Windows.old  C:\$Recycle.Bin  C:\System Volume Information
+C:\Recovery  C:\Boot  C:\PerfLogs
+```
+
+Drive roots are not in this list — they're determined separately by a regex, and all drive letters are blocked.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Switch tiers |
+| `/guard-temp [hours]` | Adjust the temporary-file exemption window; without an argument it cycles, `0` turns it off |
+| `/guard-gettoken` | Fetch the token for the current pending batch (**this is for the user; the model cannot see the output**) |
+| `/guard-dev [on\|off]` | Toggle developer mode; without an argument it inverts |
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DSH_FILEGUARD_LOG` | `%TEMP%\dsh-fileguard.log` | Log path |
+| `DSH_FILEGUARD_STATE` | `<plugin dir>\state` | State directory, mainly for testing |
+
+## Technical details
+
+**Interception entry point**: `ctx.tools.guard((exec) => string | undefined)`. Returning a string means deny, and that string is handed to the model as a prompt; returning `undefined` allows it. `exec.name` is the tool name; `exec.arguments` is a frozen parameter snapshot.
+
+**Decision order** (`check()`):
+
+```
+enabled=false → allow
+devMode=true  → allow ordinary operations only, still check drive roots / system dirs first
+state/ or config file → hard block (config files only for write-type tools; reads allowed)
+non-shell tool → record in ledger, then allow (write/edit out of scope)
+wildcard detected → hard block
+drive root (delete only) → hard block
+protectedHit → system directories
+  ├ high + system dir → hard block
+  └ system dir delete → hard block in every tier
+readonly tier → block everything outside the read-only allowlist
+low tier → deletion allowed
+high tier → both deletion and writing blocked
+otherwise → token check → block once and issue a token
+```
+
+**token**: 16 characters, with `I O 0 1` removed from the alphabet to avoid transcription errors; stored in `state/tokens.json`; the same batch of targets reuses one token, which is deleted once used. Recognition regex `#\s*fg[:\-]([A-Za-z0-9]{16})\b`; after matching, it is stripped from the command before paths are parsed, so the token isn't treated as a filename.
+
+**Path normalization**: lowercase, backslashes to forward slashes, trailing slash removed; drive roots are matched exactly with `/^[a-z]:\\$/` (never `startsWith('c:\\')`, which would lock the entire drive).
+
+**Commands whose paths can't be extracted** (`git clean -fdx`, `robocopy /MIR`) bind the token to a signature of the command text `cmd:<kind>|<normalized command>`, leaving no "resend and it passes" escape hatch.
+
+**Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`. Directories are not accepted.
+
+**State directory protection**: path matching at three levels — the whole absolute path, the `dsh-fileguard/state` segment (catching unnormalized relative paths), and the `glob` `pattern`.
+
+**Config file protection** (`touchesConfigFile()`): applies only to write-type calls (shell tools, or `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`); reads pass. Match condition — `cordis.patch.yml` appears in the command or target path; or both `package.json` and `dsh-fileguard` appear (blocking every `package.json` would make normal development impossible).
+
+**Config writes**: command handlers must return synchronously while `configEditor.edit` is async, so it's fire-and-forget; after the change the loader reloads the plugin (usually a second or two).
+
+**Frontend**: `lib/client.js` is wrapped by ModuleLoader, `require('react')` is externalized (host singleton; bundling it in causes double React and crashes slots), registers `id: 'dsh-fileguard'` / `order: 45` / `label: '文件守卫'` via `ctx.slots.inject('settings.section', ...)`, and reads/writes through the scope obtained from `configForms.get('dsh-fileguard')`.
+
+## License
+
+MIT, see [LICENSE](./LICENSE).
+
+---
+
+# Русский
+
+Плагин-страж файлов для **DeepSeek Harness**.
+
+В режиме полных прав он встаёт на пути модели перед тем, как она что-либо удалит или изменит: модель обязана остановиться и объяснить обычным языком «что это, зачем нужно, что будет, если удалить или изменить». Решение о пропуске принимаете вы с помощью токена (по сути, ключа). Временные файлы, которые модель создаёт по ходу работы, идут через обходной реестр и в пределах временного окна не требуют подтверждения, так что вам не мешают.
+
+Какую конкретную проблему он решает: когда в DSH включён `workspace-write`, по-настоящему опасные операции блокирует системное окно подтверждения повышения прав — но в нём только английские пути и строка символов `$ % #`. С одного взгляда не понять, что произойдёт после нажатия, и одного порыва достаточно, чтобы согласиться.
+
+И даже когда режим полных прав уже включён, этот плагин может заставить модель сначала изучить содержимое файлов и выдать читаемое объяснение на естественном языке, разложенное по уровням риска, — а решение вернуть вам. (Это стоит немного дополнительного бюджета токенов, но оно того стоит...)
+
+## Разбираем по пунктам
+
+### Жёсткие ограничения: эти четыре случая не пропускаются никогда
+
+| Категория | Описание |
+|---|---|
+| **Удаление корня диска** | `C:\` `D:\` `E:\`, корень подключённой флешки... корневой каталог любого диска. Удалить его — значит стереть весь диск. **Срабатывает только при удалении** — копирование файлов в корень диска или просмотр его содержимого не блокируются. |
+| **Удаление внутри системных каталогов** | `C:\Windows`, `Program Files`, `ProgramData`, `$Recycle.Bin`, `Recovery` и т. п. **Жёстко блокируется на любом уровне и в любом режиме, включая режим разработчика.** |
+| **Удаление / запись с подстановочными знаками** | Вроде `Remove-Item *.log`. Проверить каждую затронутую единицу до выполнения невозможно. **Операции только для чтения не ограничены** — `Get-ChildItem *.txt` работает как обычно. |
+| **Изменение собственной конфигурации плагина** | Блокируется и то, и другое: **значения параметров** (режим разработчика, уровень, переключатели, окно освобождения от подтверждения) можете менять только вы — на странице настроек или слэш-командами; **сами файлы конфигурации** (профильный `cordis.patch.yml`, `package.json` этого плагина) модель записать не может. **Чтение не ограничено** — смотреть она может. |
+
+### Четыре уровня политики
+
+| Уровень | Команда | Удаление | Запись / изменение | Корень диска | Сист. каталог · удаление | Сист. каталог · изменение |
+|---|---|---|---|---|---|---|
+| Только чтение (белый список) | `/guard-readonly` | Блок | Блок | Блок | Блок | Блок |
+| Высокое перехватывание | `/guard-high` | Блок один раз | Блок один раз | Блок | Блок | Блок |
+| По умолчанию | `/guard-default` | Блок один раз | Пропуск | Блок | Блок | Блок один раз |
+| Низкая защита | `/guard-low` | Пропуск | Пропуск | Блок | Блок | Блок один раз |
+
+- **Блок** = сколько ни отправляй повторно, пропущено не будет; в сообщении прямо сказано «не пытайтесь снова».
+- **Блок один раз** = плагин останавливает действие и выдаёт **одноразовый токен**. Модель должна получить токен у вас и повторить вызов с ним. Токен покрывает только те цели, что были заблокированы в этот раз, и уничтожается после использования.
+- **Пропуск** = выполняется сразу, модель никаких сообщений не видит.
+
+### Что происходит после «блок один раз»
+
+Модель получает подсказку, и её попросят:
+
+1. **Объяснить** — чётко сказать, что именно она собирается затронуть, зачем это нужно и что будет после удаления; если влияния действительно нет, прямо сказать «можно спокойно чистить».
+2. **Попросить у вас разрешение** — вы выполняете `/guard-gettoken` в поле ввода, получаете 16-символьный токен и передаёте эту строку модели.
+3. **Повторить с токеном** — достаточно добавить комментарий в конце команды: `Remove-Item 'D:\work\old.log' # fg:<этот токен>`. Комментарий не влияет на выполнение.
+4. Остальные дела можно сначала доделать и отчитаться обо всём сразу в конце; останавливаться и спрашивать по одному не нужно.
+
+**Почему токену можно доверять**: вывод слэш-команд попадает только в лог и не виден в контексте модели — то, что вы получаете через `/guard-gettoken`, она не может ни сгенерировать сама, ни подсмотреть.
+
+### Временные файлы, созданные самим ИИ: без подтверждения в течение ограниченного времени
+
+В работе модель создаёт кучу одноразовых вещей (скрипты-зонды, скриншоты, логи и т. п.). Спрашивать разрешение на их удаление — просто взаимная мука.
+
+Плагин ведёт обходной реестр, в котором записано, какие пути писала модель:
+
+- запись при записи файла инструментами `write` / `edit`;
+- запись при выполнении команд `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` — берутся пути, встречающиеся в команде;
+- последующее удаление этих путей пропускается напрямую на уровнях **низкая защита / по умолчанию**.
+
+**Распознаются только пути, зарегистрированные в реестре** — файлы, созданные вами самими, в него не попадают и по-прежнему требуют подтверждения. Именно поэтому плагин не трогает содержимое файлов и не смотрит на время создания.
+
+Четыре ограничения:
+
+1. **Каталоги не освобождаются**: только что склонированный репозиторий или только что распакованный пакет тоже попадут в реестр, но цена ошибочного удаления велика, поэтому они всегда идут через подтверждение.
+2. **Подстановочные знаки не освобождаются.**
+3. **Не действует на уровнях высокое перехватывание / только чтение.**
+4. **Окно ограничено**: по умолчанию 8 часов, после чего освобождение не действует; в реестре не более 5000 записей, при переполнении самые старые вытесняются по времени.
+
+Окно настраивается командой `/guard-temp`:
+
+| Команда | Действие |
+|---|---|
+| `/guard-temp` | Циклическое переключение: 1 → 4 → 8 → 24 → 72 → выкл |
+| `/guard-temp 12` | Сразу установить 12 часов |
+| `/guard-temp 0` | Отключить этот механизм |
+
+### Каталог состояния
+
+Плагин хранит то, что должно оставаться секретным, в `state/` внутри каталога плагина:
+
+| Файл | Содержимое |
+|---|---|
+| `tokens.json` | Ожидающие токены и цели, которые они разрешают |
+| `ai-created.json` | Обходной реестр |
+
+**Любой доступ к этому каталогу жёстко блокируется, включая чтение.** На любом уровне, любым инструментом — всё отклоняется. Причина: вся власть этой защиты заключена в этих двух файлах; если модель сможет хоть раз взглянуть, защиты не останется.
+
+Уровень, окно и переключатели **не** находятся в `state/` — они лежат в конфигурации плагина (на уровне профильного `cordis.patch.yml`), поэтому страница настроек может их менять. **Сам файл конфигурации тоже защищён**: если модель попытается напрямую изменить `cordis.patch.yml` или `package.json` этого плагина через `Set-Content` / `edit`, это тоже будет заблокировано (чтение не блокируется). Оба пути закрыты; двигать она может только команды в окне чата — а значения от этих команд в итоге подтверждаете вы.
+
+**Как менять это вам**: защита блокирует модель, а не вас. Проще всего нажать на странице настроек; можно также править файл конфигурации напрямую или пользоваться командами `/guard-*`.
+
+### Известные границы
+
+**Это мягкое ограничение, а не граница безопасности.** Оно не остановит модель, которая во что бы то ни стало решила что-то удалить:
+
+- Удаление, записанное иначе, не видно: `[System.IO.File]::Delete()`, `fs.rmSync`, перезапись через `robocopy /MIR`.
+- Инструменты `write` / `edit` и `run_code` вообще не проходят через shell и находятся вне зоны действия.
+- Замок на каталог состояния держится на «невидимости», а не на правах доступа — модель обойдёт его, если запишет путь иначе (склеит строку во время выполнения, соберёт прямо в `node -e`).
+
+Всё, что можно сделать, — поднять планку, чтобы у вас было время затормозить; настоящая физическая изоляция достигается только средствами ACL операционной системы или более хлопотным `workspace-write`.
+
+## Установка
+
+**Требование**: каталог плагина должен уметь разрешать `@deepseek-ai/schemastery` (зависимость, предоставляемая хостом). При установке в профиль через `link:`, если плагин не находится в путях поиска `node_modules` профиля, нужно вручную добавить junction — см. «Подводный камень с зависимостями» ниже.
+
+### Способ 1: установка из локального каталога (самый надёжный)
+
+```powershell
+dsh plugin --profile <profile-name> add <absolute path to this repo>
+```
+
+### Способ 2: подключить вручную
+
+1. Положите репозиторий в любое место, например `~/.dsh/plugins/dsh-fileguard`.
+2. Добавьте две вещи в `package.json` целевого профиля:
+
+   ```jsonc
+   {
+     "dependencies": {
+       "dsh-fileguard": "link:<absolute path to repo>"
+     },
+     "dsh": {
+       "profile": {
+         "bundles": [ ..., "dsh-fileguard" ]      // ← обязательно зарегистрировать, иначе не загрузится
+       }
+     }
+   }
+   ```
+
+3. Запустите `pnpm install` в каталоге профиля.
+4. Перезапустите DSH.
+
+### Подводный камень с зависимостями (обязательно к прочтению)
+
+Если в каталоге плагина нет `node_modules/@deepseek-ai`, на этапе загрузки модуля будет ошибка:
+
+```
+ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'
+```
+
+`link:` решает только вопрос «находится ли пакет»; импорты внутри пакета ищут `node_modules` вверх по реальному пути. Добавьте junction:
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "<plugin dir>\node_modules\@deepseek-ai" `
+  -Target "<profile dir>\node_modules\@deepseek-ai"
+```
+
+### Способ подключения: через bundles, а не `- insert:`
+
+Если жёстко вставить плагин в `cordis.patch.yml` профиля через `- insert:`, loader запишет его как `include:dsh-fileguard`; **`configEditor` для таких записей всегда отказывает в записи**, и страница настроек, и слэш-команды сообщают `Configuration for "dsh-fileguard" is overridden by a home patch`.
+
+Правильно — зарегистрировать имя пакета в `dsh.profile.bundles` (см. способ 2, шаг 2 выше), а в `cordis.patch.yml` оставить максимум переключатель:
+
+```yaml
+- id: dsh-fileguard
+  disabled: false
+```
+
+### Проверка установки
+
+После перезапуска посмотрите лог (по умолчанию `%TEMP%\dsh-fileguard.log`) — должно быть две строки:
+
+```
+apply; tools=object enabled=true policy=default
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+```
+
+Только первая строка = плагин загрузился, но команды не зарегистрированы (служба `commands` стала готова позже 20 секунд); нет ни одной = плагин не загрузился.
+
+Слева на странице настроек должен появиться раздел «**Файловый страж**».
+
+## Пусть агент установит за вас
+
+Отправьте агенту этот текст:
+
+> Установи мне плагин dsh-fileguard:
+> 1. Положи репозиторий в `~/.dsh/plugins/dsh-fileguard`.
+> 2. В `package.json` профиля добавь `"dsh-fileguard": "link:<путь>"` в dependencies и допиши `"dsh-fileguard"` в конец `dsh.profile.bundles`.
+> 3. Если в каталоге плагина нет `node_modules/@deepseek-ai`, создай junction на такой же каталог в профиле.
+> 4. Запусти `pnpm install` в каталоге профиля.
+> 5. Не подключай через `- insert:` в `cordis.patch.yml` — из-за этого конфигурация станет незаписываемой.
+> 6. Дай мне перезапустить DSH, затем проверь, есть ли в логе две строки `apply;` и `commands:`.
+>
+> **Когда закончишь, скажи мне:**
+> - Слева на странице настроек появился раздел «Файловый страж», где можно менять переключатели, уровень, окно освобождения временных файлов, сброс подсказок и режим разработчика.
+> - Когда команда блокируется, мне нужно ввести `/guard-gettoken` в чате, чтобы получить токен для неё.
+> - Уровень можно переключать в любой момент командами `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` или прямо на странице настроек.
+> - Для отладки можно временно ослабить защиту через `/guard-dev on` (корни дисков и системные каталоги всё равно блокируются), и не забыть потом `/guard-dev off`.
+> - Это мягкое ограничение, а не граница безопасности; не рассчитывай, что оно остановит модель, которая решила что-то удалить.
+
+## Параметры конфигурации
+
+Всё можно менять в **Настройки → Файловый страж**, а также прописать в `cordis.patch.yml` профиля.
+
+| Поле | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Общий переключатель. Когда выключен, все команды проходят напрямую — как будто плагин не установлен |
+| `policy` | string | `"default"` | Сила защиты: `low` / `default` / `high` / `readonly` |
+| `tempHours` | number | `8` | Окно освобождения временных файлов ИИ (часы). `0` = отключить механизм, максимум 720 |
+| `hintResetAt` | number | `0` | Инициализация подсказки: после смены на новую метку времени пояснение «показывается один раз» появится снова |
+| `devMode` | boolean | `false` | Режим разработчика: пропускает обычные удаления/изменения, каталог `state/` и собственные файлы конфигурации плагина (так, возможно, удобнее попросить агента доработать плагин под вас, но это и становится очень опасно); только пишется в лог. **Корни дисков и системные каталоги по-прежнему жёстко блокируются** |
+| `protectedDirs` | string[] | см. ниже | Дополнительно защищённые каталоги вместе со всем их содержимым |
+| `readOnlyMode` | boolean | `false` | Эквивалент `policy: "readonly"`; сохранён для совместимости со старыми конфигурациями |
+
+Значение по умолчанию для `protectedDirs` выводится из системных переменных окружения и обычно содержит:
+
+```
+C:\Windows  C:\Program Files  C:\Program Files (x86)  C:\ProgramData
+C:\Windows.old  C:\$Recycle.Bin  C:\System Volume Information
+C:\Recovery  C:\Boot  C:\PerfLogs
+```
+
+Корни дисков в этот список не входят — они определяются отдельно регулярным выражением, и блокируются все буквы дисков.
+
+## Команды
+
+| Команда | Назначение |
+|---|---|
+| `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Переключение уровня |
+| `/guard-temp [часы]` | Настроить окно освобождения временных файлов; без аргумента — циклическое переключение, `0` отключает |
+| `/guard-gettoken` | Получить токен текущей ожидающей партии (**это для пользователя; модель вывода не видит**) |
+| `/guard-dev [on\|off]` | Переключить режим разработчика; без аргумента — инвертировать |
+
+## Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `DSH_FILEGUARD_LOG` | `%TEMP%\dsh-fileguard.log` | Путь к логу |
+| `DSH_FILEGUARD_STATE` | `<plugin dir>\state` | Каталог состояния, в основном для тестов |
+
+## Технические детали
+
+**Точка перехвата**: `ctx.tools.guard((exec) => string | undefined)`. Возврат строки означает отказ, и эта строка передаётся модели как подсказка; возврат `undefined` — пропуск. `exec.name` — имя инструмента, `exec.arguments` — замороженный снимок параметров.
+
+**Порядок принятия решения** (`check()`):
+
+```
+enabled=false → пропустить
+devMode=true  → пропускать только обычные операции, но сначала по-прежнему проверять корни дисков / системные каталоги
+state/ или файл конфигурации → жёсткая блокировка (файлы конфигурации проверяются только для пишущих инструментов; чтение пропускается)
+не-shell инструмент → записать в реестр, затем пропустить (write/edit вне зоны действия)
+обнаружен подстановочный знак → жёсткая блокировка
+корень диска (только удаление) → жёсткая блокировка
+protectedHit → системные каталоги
+  ├ high + системный каталог → жёсткая блокировка
+  └ удаление в системном каталоге → жёсткая блокировка на любом уровне
+уровень readonly → всё вне белого списка только для чтения блокируется
+уровень low → удаление пропускается
+уровень high → блокируются и удаление, и запись
+иначе → проверка токена → блок один раз и выдача токена
+```
+
+**token**: 16 символов, из алфавита убраны `I O 0 1` во избежание ошибок при переписывании; хранится в `state/tokens.json`; для одной партии целей переиспользуется один токен, после использования удаляется. Регулярное выражение распознавания `#\s*fg[:\-]([A-Za-z0-9]{16})\b`; после совпадения токен вырезается из команды перед разбором путей, чтобы его не приняли за имя файла.
+
+**Нормализация путей**: всё в нижний регистр, обратные слэши в прямые, завершающий слэш убирается; корни дисков определяются точным совпадением с `/^[a-z]:\\$/` (нельзя `startsWith('c:\\')` — это заблокирует весь диск).
+
+**Команды, у которых пути не извлекаются** (`git clean -fdx`, `robocopy /MIR`), привязывают токен к подписи текста команды `cmd:<kind>|<нормализованная команда>`, не оставляя лазейки «повторил — и прошло».
+
+**Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`. Каталоги не принимаются.
+
+**Защита каталога состояния**: сопоставление путей в три слоя — весь абсолютный путь, фрагмент `dsh-fileguard/state` (ловит ненормализованные относительные пути) и `pattern` у `glob`.
+
+**Защита файлов конфигурации** (`touchesConfigFile()`): действует только для пишущих вызовов (shell-инструменты, или `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`), чтение пропускается. Условие срабатывания — `cordis.patch.yml` встречается в команде или целевом пути; либо одновременно встречаются `package.json` и `dsh-fileguard` (блокировать все `package.json` нельзя — тогда нормальная разработка станет невозможной).
+
+**Запись конфигурации**: обработчик команды должен возвращать результат синхронно, а `configEditor.edit` асинхронный, поэтому используется fire-and-forget; после изменения loader перезагружает плагин (обычно одну-две секунды).
+
+**Фронтенд**: `lib/client.js` обёрнут через ModuleLoader, `require('react')` вынесен наружу (синглтон хоста; включение в bundle даёт двойной React и ломает slots), регистрирует `id: 'dsh-fileguard'` / `order: 45` / `label: '文件守卫'` через `ctx.slots.inject('settings.section', ...)`, чтение и запись идут через scope, полученный из `configForms.get('dsh-fileguard')`.
+
+## Лицензия
+
+MIT, см. [LICENSE](./LICENSE).
+
+---
+
+# 日本語
+
+**DeepSeek Harness** 用のファイルガードプラグインです。
+
+全権モードでは、モデルが何かを削除・変更する前に一度止めさせ、「これは何か、何に使うのか、削除・変更するとどうなるか」を自然言語で説明させます。そのうえで、あなたがトークン（鍵のようなもの）を使って許可するかどうかを決めます。モデルが作業中に作った一時ファイルはバイパス台帳を通り、時間内は審査免除なので、あなたを煩わせません。
+
+これが解決する具体的な問題：DSH で `workspace-write` を有効にすると、危険な操作を実際に止めているのはシステムの権限昇格確認ダイアログです。しかしそのダイアログは英語のパスと `$ % #` の記号ばかりで、一目見ただけではクリックしたら何が起きるか判断できず、手が滑ればそのまま同意してしまいます。
+
+そして全権モードを有効にした後でも、このプラグインはモデルにファイル内容を先に調べさせ、理解できるリスク階層付きの自然言語の説明を出させ、決定権をあなたに返します。（少し余分なトークンを使いますが、それだけの価値はあるはずです…）
+
+## 一つずつ説明します
+
+### ハード制限：この4種類は決して通しません
+
+| カテゴリ | 説明 |
+|---|---|
+| **ドライブのルート削除** | `C:\` `D:\` `E:\`、接続した USB メモリのルート……あらゆるドライブのルートディレクトリ。削除はディスク全体の消去に等しい。**削除のときだけ適用** — ルートへのファイルコピーや一覧表示はブロックしません。 |
+| **システムディレクトリ内の削除** | `C:\Windows`、`Program Files`、`ProgramData`、`$Recycle.Bin`、`Recovery` など。**すべてのレベル、あらゆるモード（開発者モードを含む）で完全ブロック。** |
+| **ワイルドカードを含む削除 / 書き込み** | `Remove-Item *.log` のようなもの。対象範囲を実行前に一つずつ確認できません。**読み取り専用の操作は制限されません** — `Get-ChildItem *.txt` は通常どおり。 |
+| **プラグイン自身の設定変更** | 両方ブロックします：**設定値**（開発者モード、レベル、スイッチ、審査免除の時間枠）は設定ページかスラッシュコマンドからあなただけが変更できます；**設定ファイルそのもの**（profile の `cordis.patch.yml`、このプラグインの `package.json`）へのモデルの書き込みはブロックします。**読み取りは制限されません** — 見ることはできます。 |
+
+### 4つのレベル
+
+| レベル | コマンド | 削除 | 書き込み / 変更 | ドライブのルート | システムディレクトリ · 削除 | システムディレクトリ · 変更 |
+|---|---|---|---|---|---|---|
+| 読み取り専用ホワイトリスト | `/guard-readonly` | 完全ブロック | 完全ブロック | 完全ブロック | 完全ブロック | 完全ブロック |
+| 高インターセプト | `/guard-high` | 一度だけブロック | 一度だけブロック | 完全ブロック | 完全ブロック | 完全ブロック |
+| デフォルト | `/guard-default` | 一度だけブロック | 通過 | 完全ブロック | 完全ブロック | 一度だけブロック |
+| 低ガード | `/guard-low` | 通過 | 通過 | 完全ブロック | 完全ブロック | 一度だけブロック |
+
+- **完全ブロック** = 何度送り直しても通りません。メッセージには「再試行しないでください」と明記されます。
+- **一度だけブロック** = プラグインが止め、**ワンタイムトークン**を発行します。モデルはあなたからトークンを受け取り、それを付けて再送しないと実行できません。トークンは今回ブロックされた対象だけをカバーし、使えば失効します。
+- **通過** = そのまま実行され、モデルには何も表示されません。
+
+### 「一度だけブロック」の後に何が起きるか
+
+モデルにはプロンプトが渡され、次のことが求められます：
+
+1. **説明** — 何を触ろうとしているのか、何のためか、削除したらどうなるかを明確に伝える。本当に影響がないなら「そのまま削除して問題ありません」と正直に言う。
+2. **許可を求める** — あなたが入力欄で `/guard-gettoken` を実行し、16 文字のトークンを取得して、その文字列をモデルに渡します。
+3. **トークンを付けて再送** — コマンドの末尾にコメントを足すだけ：`Remove-Item 'D:\work\old.log' # fg:<そのトークン>`。コメントは実行に影響しません。
+4. 他に手元の作業があれば先に片付け、最後にまとめて報告してよい。一件ずつ止まって聞く必要はありません。
+
+**トークンが信頼できる理由**：スラッシュコマンドの出力はログにだけ残り、モデルのコンテキストには見えません — `/guard-gettoken` で得たものは、モデルが自分で生成することも盗み見ることもできないのです。
+
+### AI 自身が書いた一時ファイル：一定時間は審査免除
+
+モデルが作業すると、使い捨てのもの（調査スクリプト、スクリーンショット、ログなど）が山ほどできます。その削除までいちいち確認するのはお互い苦痛です。
+
+プラグインはバイパス台帳を保持し、モデルが書き込んだパスを記録します：
+
+- `write` / `edit` などのツールがファイルを書いたときに記録；
+- `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` などのコマンド実行時に、コマンド内に現れるパスを記録；
+- その後これらのパスを削除するとき、**低ガード / デフォルト** レベルでは直接通過。
+
+**台帳に登録されたパスだけを認識します** — あなた自身が作成したファイルは台帳にないため、従来どおり確認が必要です。だからこそファイルの中身には触れず、作成時刻も見ません。
+
+4つの制限：
+
+1. **ディレクトリは免除しません**：クローンしたばかりのリポジトリや展開したばかりのパッケージも台帳に入りますが、誤削除の代償が大きいため、必ず確認を通します。
+2. **ワイルドカードは免除しません。**
+3. **高インターセプト / 読み取り専用ホワイトリストのレベルでは効きません。**
+4. **時間枠は有限**：既定 8 時間、過ぎると免除されません；台帳は最大 5000 件、超えたら古いものから時間順に追い出されます。
+
+時間枠は `/guard-temp` で調整します：
+
+| コマンド | 効果 |
+|---|---|
+| `/guard-temp` | 循環切替：1 → 4 → 8 → 24 → 72 → オフ |
+| `/guard-temp 12` | 直接 12 時間に設定 |
+| `/guard-temp 0` | この仕組みをオフにする |
+
+### 状態ディレクトリ
+
+プラグインは秘匿すべきものを、プラグインのディレクトリ下の `state/` に置きます：
+
+| ファイル | 内容 |
+|---|---|
+| `tokens.json` | 承認待ちのトークンと、それが許可する対象 |
+| `ai-created.json` | バイパス台帳 |
+
+**このディレクトリへのあらゆるアクセスは完全ブロックされ、読み取りも同様です。** どのレベルでも、どのツールでもすべて拒否されます。理由：このガードの権威はすべてこの2つのファイルにあり、モデルが一度でも見ればガードは意味を失うからです。
+
+レベル・時間枠・スイッチは `state/` には**ありません** — プラグイン設定（profile の `cordis.patch.yml` の層）にあり、だから設定ページで変更できます。その**設定ファイル自体も保護されています**：モデルが `Set-Content` / `edit` で `cordis.patch.yml` やこのプラグインの `package.json` を直接書き換えようとしても、同様にブロックされます（読み取りはブロックしません）。両方の経路が塞がれており、モデルが動かせるのはチャット欄のコマンドだけ——そしてそのコマンドが変える値は、最終的にあなたがクリックしたものです。
+
+**あなた自身が変更する方法**：ガードが止めるのはモデルであって、あなたではありません。設定ページでクリックするのが一番簡単です。設定ファイルを直接編集するか、`/guard-*` コマンドを使ってもかまいません。
+
+### 既知の限界
+
+**これはソフトな制約であり、セキュリティ境界ではありません。** 何としても削除しようとするモデルは止められません：
+
+- 別の書き方の削除は見えません：`[System.IO.File]::Delete()`、`fs.rmSync`、`robocopy /MIR` による上書き。
+- `write` / `edit` ツールと `run_code` は shell を経由しないため、管轄外です。
+- 状態ディレクトリのロックは権限ではなく「見えないこと」に頼っています — モデルがパスを書かない形（実行時に文字列を組み立てる、`node -e` の中でその場で組む）に変えれば回避できます。
+
+できるのはハードルを上げて、あなたがブレーキを踏む時間を作ることです。本当の物理的隔離は OS の ACL か、やや面倒な `workspace-write` に頼るしかありません。
+
+## インストール
+
+**前提**：プラグインのディレクトリは `@deepseek-ai/schemastery`（ホストが提供する依存）を解決できる必要があります。`link:` で profile にインストールする場合、プラグインが profile の `node_modules` 検索パス上にないなら、junction を手動で追加する必要があります — 下の「依存関係の落とし穴」を参照。
+
+### 方法1：ローカルディレクトリからインストール（最も確実）
+
+```powershell
+dsh plugin --profile <profile-name> add <absolute path to this repo>
+```
+
+### 方法2：手動でマウント
+
+1. リポジトリを任意の場所に置きます。例：`~/.dsh/plugins/dsh-fileguard`。
+2. 対象 profile の `package.json` に2か所追加します：
+
+   ```jsonc
+   {
+     "dependencies": {
+       "dsh-fileguard": "link:<absolute path to repo>"
+     },
+     "dsh": {
+       "profile": {
+         "bundles": [ ..., "dsh-fileguard" ]      // ← 必ず登録。登録しないと読み込まれません
+       }
+     }
+   }
+   ```
+
+3. profile のディレクトリで `pnpm install` を実行します。
+4. DSH を再起動します。
+
+### 依存関係の落とし穴（必読）
+
+プラグインのディレクトリに `node_modules/@deepseek-ai` がないと、モジュール読み込み段階で次のエラーが出ます：
+
+```
+ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'
+```
+
+`link:` が解決するのは「パッケージが見つかるかどうか」だけです。パッケージ内部の import は実パスから上へ `node_modules` を探します。junction を追加してください：
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "<plugin dir>\node_modules\@deepseek-ai" `
+  -Target "<profile dir>\node_modules\@deepseek-ai"
+```
+
+### マウント方法：bundles を使い、`- insert:` は使わない
+
+profile の `cordis.patch.yml` で `- insert:` を使って無理やり挿し込むと、loader はそれを `include:dsh-fileguard` として記録します。この種の entry には **`configEditor` が一律で書き込みを拒否し**、設定ページもスラッシュコマンドも `Configuration for "dsh-fileguard" is overridden by a home patch` を報告します。
+
+正しい方法は、パッケージ名を `dsh.profile.bundles` に登録すること（上の方法2の手順2を参照）。`cordis.patch.yml` にはスイッチを最大1つだけ残します：
+
+```yaml
+- id: dsh-fileguard
+  disabled: false
+```
+
+### インストールの確認
+
+再起動後にログ（既定 `%TEMP%\dsh-fileguard.log`）を見てください。2行あるはずです：
+
+```
+apply; tools=object enabled=true policy=default
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+```
+
+1行目だけ = プラグインは読み込まれたがコマンドが登録されていない（`commands` サービスの準備が 20 秒より遅かった）；どちらもない = プラグインが読み込まれていない。
+
+設定ページの左側に「**ファイルガード**」の項目が現れるはずです。
+
+## エージェントにインストールしてもらう
+
+以下をそのままエージェントに送ってください：
+
+> dsh-fileguard プラグインを入れてください：
+> 1. リポジトリを `~/.dsh/plugins/dsh-fileguard` に置く。
+> 2. profile の `package.json` の dependencies に `"dsh-fileguard": "link:<パス>"` を追加し、`dsh.profile.bundles` の末尾に `"dsh-fileguard"` を追加する。
+> 3. プラグインのディレクトリに `node_modules/@deepseek-ai` がなければ、profile の同じディレクトリを指す junction を作る。
+> 4. profile のディレクトリで `pnpm install` を実行する。
+> 5. `cordis.patch.yml` の `- insert:` ではマウントしない。設定が書き込めなくなるため。
+> 6. 私に DSH を再起動させ、ログに `apply;` と `commands:` の2行があるか確認する。
+>
+> **終わったら教えてください：**
+> - 設定ページの左側に「ファイルガード」の項目が増え、スイッチ・レベル・一時ファイルの審査免除時間枠・プロンプトのリセット・開発者モードを変更できる。
+> - コマンドがブロックされたときは、チャット欄で `/guard-gettoken` を打ってトークンを取得し、モデルに渡す必要がある。
+> - レベルは `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` でいつでも切り替えられる。設定ページから直接でもよい。
+> - デバッグ時は `/guard-dev on` で一時的に緩められる（ドライブのルートとシステムディレクトリは依然ブロック）。使い終わったら `/guard-dev off` を忘れずに。
+> - これはソフトな制約であり、セキュリティ境界ではない。削除しようとするモデルを止められるとは期待しないこと。
+
+## 設定項目
+
+すべて**設定ページ → ファイルガード**で変更できます。profile の `cordis.patch.yml` に書くこともできます。
+
+| フィールド | 型 | 既定値 | 説明 |
+|---|---|---|---|
+| `enabled` | boolean | `true` | 全体スイッチ。オフにするとすべてのコマンドが直接通過し、未インストールと同じになる |
+| `policy` | string | `"default"` | ガードの強さ：`low` / `default` / `high` / `readonly` |
+| `tempHours` | number | `8` | AI の一時ファイル審査免除の時間枠（時間）。`0` = この仕組みをオフ、上限 720 |
+| `hintResetAt` | number | `0` | プロンプトの初期化：新しいタイムスタンプに変えると、「一度だけ表示」の説明が再び現れる |
+| `devMode` | boolean | `false` | 開発者モード：通常の削除・変更、`state/` ディレクトリ、プラグイン自身の設定ファイルを通過させる（こうすればエージェントに頼んでこのプラグインをカスタマイズしてもらいやすくなるかもしれませんが、とても危険にもなります）。ログのみ記録。**ドライブのルートとシステムディレクトリは依然として完全ブロック** |
+| `protectedDirs` | string[] | 下記参照 | 追加で保護するディレクトリ。その下のすべてを含む |
+| `readOnlyMode` | boolean | `false` | `policy: "readonly"` と同等。古い設定との互換のため残存 |
+
+`protectedDirs` の既定値はシステム環境変数から導出され、通常は次を含みます：
+
+```
+C:\Windows  C:\Program Files  C:\Program Files (x86)  C:\ProgramData
+C:\Windows.old  C:\$Recycle.Bin  C:\System Volume Information
+C:\Recovery  C:\Boot  C:\PerfLogs
+```
+
+ドライブのルートはこの一覧には含まれません — 正規表現で別途判定し、すべてのドライブレターをブロックします。
+
+## コマンド
+
+| コマンド | 役割 |
+|---|---|
+| `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | レベルの切り替え |
+| `/guard-temp [時間]` | 一時ファイルの審査免除時間枠を調整；引数なしで循環切替、`0` でオフ |
+| `/guard-gettoken` | 現在の承認待ちバッチのトークンを取り出す（**これはあなた用。モデルは出力を見られません**） |
+| `/guard-dev [on\|off]` | 開発者モードの切り替え；引数なしで反転 |
+
+## 環境変数
+
+| 変数 | 既定値 | 説明 |
+|---|---|---|
+| `DSH_FILEGUARD_LOG` | `%TEMP%\dsh-fileguard.log` | ログのパス |
+| `DSH_FILEGUARD_STATE` | `<plugin dir>\state` | 状態ディレクトリ。主にテスト用 |
+
+## 技術的な詳細
+
+**インターセプトの入口**：`ctx.tools.guard((exec) => string | undefined)`。文字列を返すと拒否し、その文字列をプロンプトとしてモデルに渡します。`undefined` を返すと通過。`exec.name` はツール名、`exec.arguments` は凍結されたパラメータのスナップショットです。
+
+**判定順序**（`check()`）：
+
+```
+enabled=false → 通過
+devMode=true  → 通常操作のみ通過。ただし先にドライブのルート / システムディレクトリを確認
+state/ または設定ファイル → 完全ブロック（設定ファイルは書き込み系ツールのみ確認、読み取りは通過）
+shell 以外のツール → 台帳に記録して通過（write/edit は管轄外）
+ワイルドカード検出 → 完全ブロック
+ドライブのルート（削除時のみ） → 完全ブロック
+protectedHit → システムディレクトリ
+  ├ high + システムディレクトリ → 完全ブロック
+  └ システムディレクトリの削除 → すべてのレベルで完全ブロック
+readonly レベル → 読み取り専用ホワイトリスト以外はすべてブロック
+low レベル → 削除を通過
+high レベル → 削除も書き込みもブロック
+それ以外 → トークン検証 → 一度だけブロックしてトークン発行
+```
+
+**token**：16 文字。書き写し間違いを避けるためアルファベットから `I O 0 1` を除外。`state/tokens.json` に保存し、同じ対象バッチでは同じトークンを再利用、使えば削除。認識用正規表現 `#\s*fg[:\-]([A-Za-z0-9]{16})\b`。マッチ後、パス解析の前にコマンドから取り除き、トークンがファイル名として扱われないようにします。
+
+**パスの正規化**：すべて小文字化、バックスラッシュをスラッシュへ、末尾スラッシュを削除。ドライブのルートは `/^[a-z]:\\$/` で厳密に判定（`startsWith('c:\\')` は不可 — ディスク全体をロックしてしまう）。
+
+**パスを抽出できないコマンド**（`git clean -fdx`、`robocopy /MIR`）は、コマンド原文の署名 `cmd:<kind>|<正規化コマンド>` にトークンを結びつけ、「再送すれば通る」という抜け道を残しません。
+
+**バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得。ディレクトリは受け付けません。
+
+**状態ディレクトリの保護**：パス照合は三層 — 絶対パス全体、`dsh-fileguard/state` の断片（正規化されていない相対パスを捕捉）、`glob` の `pattern`。
+
+**設定ファイルの保護**（`touchesConfigFile()`）：書き込み系の呼び出しにのみ有効（shell ツール、または `write` / `edit` / `str_replace_editor` / `apply_patch` / `multi_edit`）。読み取りは通過。発動条件 — コマンドまたは対象パスに `cordis.patch.yml` が現れる；または `package.json` と `dsh-fileguard` が同時に現れる（すべての `package.json` をブロックすると通常の開発ができなくなるため）。
+
+**設定の書き込み**：コマンドハンドラは同期的に返す必要があり、`configEditor.edit` は async なので fire-and-forget。変更後は loader がプラグインを再読み込みして反映します（通常 1〜2 秒）。
+
+**フロントエンド**：`lib/client.js` は ModuleLoader でラップされ、`require('react')` は外部化（ホストのシングルトン。bundle に含めると二重 React になり slots が落ちる）。`ctx.slots.inject('settings.section', ...)` で `id: 'dsh-fileguard'` / `order: 45` / `label: '文件守卫'` を登録し、読み書きは `configForms.get('dsh-fileguard')` で得た scope を通します。
+
+## ライセンス
+
+MIT。[LICENSE](./LICENSE) を参照。
