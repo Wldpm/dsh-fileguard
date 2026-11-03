@@ -227,7 +227,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | 切换档位 |
 | `/guard-temp [小时]` | 调整临时文件免审窗口；不带参数循环切换，`0` 关掉 |
-| `/guard-gettoken` | 取出当前待放行批次的 token（**这是给用户的，模型拿不到输出**） |
+| `/guard-gettoken` | 取出待放行批次的 token；被拦了多批就一次全列出来，每批一个（**这是给用户的，模型拿不到输出**） |
 | `/guard-dev [on\|off]` | 切开发者模式；不带参数取反 |
 
 ## 环境变量
@@ -270,7 +270,9 @@ high 档              → 删除和写入都拦
 
 **dsh-ops 工具集**：`ops_remove`、`ops_write_file`、`ops_edit_file`、`ops_replace`、`ops_copy`、`ops_move`、`ops_batch`（`action` 为 `run` / `resume` 时）与 shell 命令同权处理——档位、盘根、系统目录、`state/`、配置文件一律照旧生效；`dryRun: true`、`action=plan` 和只读 ops 工具（`ops_stat`、`ops_grep`、`ops_result` 等）不受影响。路径从 `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir` 取，`ops_batch` 还会把 `operations[].path`、`operations[].to` 按 `root` 拼成绝对路径。`ops_` 前缀硬编码在 `dsh-ops/lib/policy.js`，改不了；名字里带 `remove/move/rename/write/edit/replace/copy/truncate/batch` 的未知 ops 工具也按变更处理，插件升级后不会自动多出后门。
 
-**ops 工具怎么带 token**：它们没有命令行，参数 schema 又是封闭的（`additionalProperties: false`），塞不进 `# fg:<token>`。所以 `/guard-gettoken` 在你看到 token 的那一刻给它打上 `seen` 标记——只有被你亲眼看过的 token 才允许从 ops 通道放行；模型自己去 `state/tokens.json` 翻是拿不到的，那个目录对它拦死。你让它把同样的调用原样重发一遍即可，一个参数都不用改。
+**ops 工具怎么带 token**：它们没有命令行，参数 schema 又是封闭的（`additionalProperties: false`），塞不进 `# fg:<token>`。所以 `/guard-gettoken` 在你看到 token 的那一刻给它打上 `seen` 标记——只有被你亲眼看过的 token 才允许从 ops 通道放行；模型自己去 `state/tokens.json` 翻是拿不到的，那个目录对它拦死。你让它把同样的调用原样重发一遍即可，一个参数都不用改。被拦了好几批时，`/guard-gettoken` 会把每一批都列出来、各配一个 token，互不覆盖；哪批被用掉哪批才失效，剩下的照旧留在那儿。
+
+**路径写法**：`C:\`、`C:/`、`\\server\` 和 git-bash 的 `/c/Users/...` 都认。MSYS 写法会先归一成 `c:/Users/...` 再和 token 里记的路径比对，所以同一份文件换个写法重发也能命中——不会退化成一串对不上的 `cmd:` 签名。
 
 **旁路台账**：只记路径不碰内容。`write`/`edit` 从 `file_path`/`filePath`/`path`/`target`/`filename` 取；shell 命令从 `extractPaths()` 取；ops 变更工具从 `targetPathList()` 取。目录不收。
 
@@ -508,7 +510,7 @@ Drive roots are not in this list — they're determined separately by a regex, a
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Switch tiers |
 | `/guard-temp [hours]` | Adjust the temporary-file exemption window; without an argument it cycles, `0` turns it off |
-| `/guard-gettoken` | Fetch the token for the current pending batch (**this is for the user; the model cannot see the output**) |
+| `/guard-gettoken` | Fetch the token for the pending batch; if several are blocked it lists them all at once, one token each (**this is for the user; the model cannot see the output**) |
 | `/guard-dev [on\|off]` | Toggle developer mode; without an argument it inverts |
 
 ## Environment variables
@@ -547,9 +549,13 @@ otherwise → token check → block once and issue a token
 
 **Commands whose paths can't be extracted** (`git clean -fdx`, `robocopy /MIR`) bind the token to a signature of the command text `cmd:<kind>|<normalized command>`, leaving no "resend and it passes" escape hatch. The same applies to `ops_batch` with an `operationsRef` and no inline `operations` — when it's impossible to see which files are affected, the call is held to that signature.
 
+**Path styles** in this context: `C:\`, `C:/`, `\\server\` and git-bash's `/c/Users/...` are all recognised. An MSYS path is normalised to `c:/Users/...` before comparison — otherwise a path written in git-bash notation would never match the `C:`-style path stored in the token.
+
 **The dsh-ops tool set**: `ops_remove`, `ops_write_file`, `ops_edit_file`, `ops_replace`, `ops_copy`, `ops_move` and `ops_batch` (when `action` is `run` / `resume`) are handled with the same authority as shell commands — tiers, drive roots, system directories, `state/` and config files all apply exactly as before; `dryRun: true`, `action=plan` and the read-only ops tools (`ops_stat`, `ops_grep`, `ops_result`, ...) are unaffected. Paths are taken from `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir`, and `ops_batch` additionally joins `operations[].path` and `operations[].to` onto `root` as absolute paths. The `ops_` prefix is hardcoded in `dsh-ops/lib/policy.js` and can't be changed; unknown ops tools whose names contain `remove/move/rename/write/edit/replace/copy/truncate/batch` are also treated as mutations, so a plugin upgrade can't quietly open a new back door.
 
-**How ops tools carry a token**: they have no command line, and their argument schemas are closed (`additionalProperties: false`), so `# fg:<token>` cannot be smuggled in. Instead, `/guard-gettoken` marks the token as `seen` at the moment you see it — only a token you have personally laid eyes on may pass through the ops channel; the model can't fetch it from `state/tokens.json`, which is hard-blocked for it. Just have it resend the identical call, without changing a single parameter.
+**How ops tools carry a token**: they have no command line, and their argument schemas are closed (`additionalProperties: false`), so `# fg:<token>` cannot be smuggled in. Instead, `/guard-gettoken` marks the token as `seen` at the moment you see it — only a token you have personally laid eyes on may pass through the ops channel; the model can't fetch it from `state/tokens.json`, which is hard-blocked for it. Just have it resend the identical call, without changing a single parameter. When several batches are blocked, `/guard-gettoken` lists every one of them with its own token, none overwriting another; a batch expires only when its own token is used up, and the rest stay put.
+
+**Path styles**: `C:\`, `C:/`, `\\server\` and git-bash's `/c/Users/...` are all recognised. An MSYS path is normalised to `c:/Users/...` before being compared with the paths recorded in the token, so resending the same file in a different notation still matches — it never degrades into a mismatched `cmd:` signature.
 
 **Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`; for ops mutation tools from `targetPathList()`. Directories are not accepted.
 
@@ -787,7 +793,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Переключение уровня |
 | `/guard-temp [часы]` | Настроить окно освобождения временных файлов; без аргумента — циклическое переключение, `0` отключает |
-| `/guard-gettoken` | Получить токен текущей ожидающей партии (**это для пользователя; модель вывода не видит**) |
+| `/guard-gettoken` | Получить токен ожидающей партии; если заблокировано несколько, все они перечисляются сразу, по токену на каждую (**это для пользователя; модель вывода не видит**) |
 | `/guard-dev [on\|off]` | Переключить режим разработчика; без аргумента — инвертировать |
 
 ## Переменные окружения
@@ -826,9 +832,13 @@ protectedHit → системные каталоги
 
 **Команды, у которых пути не извлекаются** (`git clean -fdx`, `robocopy /MIR`), привязывают токен к подписи текста команды `cmd:<kind>|<нормализованная команда>`, не оставляя лазейки «повторил — и прошло». То же самое относится к `ops_batch` с `operationsRef` и без встроенного `operations` — когда невозможно увидеть, какие файлы затрагиваются, вызов привязывается к этой подписи.
 
+**Запись путей** в этом контексте: `C:\`, `C:/`, `\\server\` и git-bash-стиль `/c/Users/...` — всё распознаётся. MSYS-путь нормализуется в `c:/Users/...` перед сравнением — иначе путь в git-bash-записи никогда не совпал бы с путём в стиле `C:` из токена.
+
 **Набор инструментов dsh-ops**: `ops_remove`, `ops_write_file`, `ops_edit_file`, `ops_replace`, `ops_copy`, `ops_move` и `ops_batch` (когда `action` равен `run` / `resume`) обрабатываются с теми же полномочиями, что и shell-команды — уровни, корни дисков, системные каталоги, `state/` и файлы конфигурации действуют ровно так же; `dryRun: true`, `action=plan` и инструменты ops только для чтения (`ops_stat`, `ops_grep`, `ops_result`, ...) не затрагиваются. Пути берутся из `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir`, а `ops_batch` дополнительно склеивает `operations[].path` и `operations[].to` с `root` в абсолютные пути. Префикс `ops_` жёстко зашит в `dsh-ops/lib/policy.js` и не меняется; неизвестные ops-инструменты, в имени которых есть `remove/move/rename/write/edit/replace/copy/truncate/batch`, тоже считаются изменяющими, так что обновление плагина не откроет тихо новую лазейку.
 
-**Как инструменты ops несут токен**: у них нет командной строки, а схемы аргументов закрыты (`additionalProperties: false`), поэтому `# fg:<token>` туда не подложить. Вместо этого `/guard-gettoken` помечает токен как `seen` в тот момент, когда вы его увидели — через канал ops может пройти только токен, который вы лично видели; модель не достанет его из `state/tokens.json`, который для неё жёстко заблокирован. Просто попросите её повторить тот же вызов, не меняя ни одного параметра.
+**Как инструменты ops несут токен**: у них нет командной строки, а схемы аргументов закрыты (`additionalProperties: false`), поэтому `# fg:<token>` туда не подложить. Вместо этого `/guard-gettoken` помечает токен как `seen` в тот момент, когда вы его увидели — через канал ops может пройти только токен, который вы лично видели; модель не достанет его из `state/tokens.json`, который для неё жёстко заблокирован. Просто попросите её повторить тот же вызов, не меняя ни одного параметра. Если заблокировано несколько партий, `/guard-gettoken` перечислит каждую со своим токеном, не перекрывая друг друга; партия исчезает только когда израсходован её токен, остальные остаются на месте.
+
+**Запись путей**: `C:\`, `C:/`, `\\server\` и git-bash-стиль `/c/Users/...` — всё распознаётся. MSYS-путь сначала нормализуется в `c:/Users/...` и только потом сравнивается с путями в токене, поэтому тот же файл, переотправленный в другой записи, всё равно совпадёт — и не выродится в несовпадающую подпись `cmd:`.
 
 **Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`; для изменяющих инструментов ops — из `targetPathList()`. Каталоги не принимаются.
 
@@ -1066,7 +1076,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | レベルの切り替え |
 | `/guard-temp [時間]` | 一時ファイルの審査免除時間枠を調整；引数なしで循環切替、`0` でオフ |
-| `/guard-gettoken` | 現在の承認待ちバッチのトークンを取り出す（**これはあなた用。モデルは出力を見られません**） |
+| `/guard-gettoken` | 承認待ちバッチのトークンを取り出す。複数ブロックされていれば一度にすべて列挙され、それぞれに 1 つのトークンが付く（**これはあなた用。モデルは出力を見られません**） |
 | `/guard-dev [on\|off]` | 開発者モードの切り替え；引数なしで反転 |
 
 ## 環境変数
@@ -1105,9 +1115,13 @@ high レベル → 削除も書き込みもブロック
 
 **パスを抽出できないコマンド**（`git clean -fdx`、`robocopy /MIR`）は、コマンド原文の署名 `cmd:<kind>|<正規化コマンド>` にトークンを結びつけ、「再送すれば通る」という抜け道を残しません。`ops_batch` が `operationsRef` を使い、インラインの `operations` を持たない場合も同じです — どのファイルが対象か見えないときは、この署名に縛ります。
 
+**パスの書き方**：`C:\`、`C:/`、`\\server\`、git-bash の `/c/Users/...` をすべて認識します。MSYS 形式のパスは照合前に `c:/Users/...` へ正規化されます — そうしないと git-bash 形式のパスが、トークンに記録された `C:` 形式のパスと永久に一致しません。
+
 **dsh-ops ツール群**：`ops_remove`、`ops_write_file`、`ops_edit_file`、`ops_replace`、`ops_copy`、`ops_move`、および `ops_batch`（`action` が `run` / `resume` のとき）は shell コマンドと同じ権限で扱います — レベル、ドライブのルート、システムディレクトリ、`state/`、設定ファイルがこれまでどおり効きます。`dryRun: true`、`action=plan`、読み取り専用の ops ツール（`ops_stat`、`ops_grep`、`ops_result` など）は影響を受けません。パスは `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir` から取り、`ops_batch` はさらに `operations[].path` と `operations[].to` を `root` に結合して絶対パスにします。`ops_` の接頭辞は `dsh-ops/lib/policy.js` にハードコードされていて変更できません。名前に `remove/move/rename/write/edit/replace/copy/truncate/batch` を含む未知の ops ツールも変更系として扱うので、プラグインの更新で静かに新しい抜け道が開くことはありません。
 
-**ops ツールがトークンをどう受け取るか**：コマンドラインがなく、引数のスキーマも閉じている（`additionalProperties: false`）ため、`# fg:<token>` を紛れ込ませることはできません。代わりに `/guard-gettoken` が、あなたがトークンを見たその瞬間に `seen` の印を付けます — ops の経路を通れるのは、あなた自身が目にしたトークンだけです。モデルが `state/tokens.json` から取り出すことはできません（そのディレクトリはモデルに対して完全ブロックです）。同じ呼び出しをパラメータ一つ変えずに再送させるだけで済みます。
+**ops ツールがトークンをどう受け取るか**：コマンドラインがなく、引数のスキーマも閉じている（`additionalProperties: false`）ため、`# fg:<token>` を紛れ込ませることはできません。代わりに `/guard-gettoken` が、あなたがトークンを見たその瞬間に `seen` の印を付けます — ops の経路を通れるのは、あなた自身が目にしたトークンだけです。モデルが `state/tokens.json` から取り出すことはできません（そのディレクトリはモデルに対して完全ブロックです）。同じ呼び出しをパラメータ一つ変えずに再送させるだけで済みます。複数のバッチがブロックされている場合、`/guard-gettoken` はそれぞれに専用のトークンを付けて全部列挙し、互いに上書きしません。使われたバッチだけが失効し、残りはそのまま残ります。
+
+**パスの書き方**：`C:\`、`C:/`、`\\server\`、そして git-bash の `/c/Users/...` をすべて認識します。MSYS 形式はまず `c:/Users/...` に正規化してからトークン内のパスと照合するので、同じファイルを別の書き方で再送しても一致します — 食い違う `cmd:` 署名に退化することはありません。
 
 **バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得；ops の変更系ツールは `targetPathList()` から取得。ディレクトリは受け付けません。
 
