@@ -58,7 +58,7 @@
 - `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` 等命令执行时，把命令里出现的路径记进去；
 - 之后删这些路径，在 **低守卫 / 默认** 档下直接放行。
 
-**只认台账上登记过的路径**——你自己新建的文件不在账上，照旧要确认。也正因如此它不碰文件内容、不看创建时间。
+**只认台账上登记过的路径**——你自己新建的文件不在账上，照旧要确认。也正因如此它不碰文件内容，只看路径和台账里的记录时间。
 
 四条限制：
 
@@ -66,6 +66,9 @@
 2. **通配符不放行**。
 3. **高拦截 / 纯白名单档不生效**。
 4. **窗口有限**：默认 8 小时，过期不再免审；台账最多 5000 条，超了按时间淘汰最旧的。
+5. **临时文件不看窗口**：名字像临时文件的（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`），只要在台账上，放多久都免审；模型清理自己的探测脚本、截图、日志时不会再来烦你。
+
+顺带一提：`cd` 到某个目录再删裸文件名（`cd /d/x && rm -f .tmp-a.mjs`）也能认出目标，不必写全路径。
 
 窗口用 `/guard-temp` 调：
 
@@ -349,7 +352,7 @@ The plugin keeps a bypass ledger recording which paths the model wrote:
 - recorded when commands such as `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` run, capturing the paths appearing in the command;
 - deleting those paths afterwards is allowed directly under the **low guard / default** tiers.
 
-**Only paths registered in the ledger are recognized** — files you created yourself aren't on it and still need confirmation. That's also why it doesn't touch file contents and doesn't look at creation times.
+**Only paths registered in the ledger are recognized** — files you created yourself aren't on it and still need confirmation. That's also why it doesn't touch file contents and only looks at the path and the time recorded in the ledger.
 
 Four limits:
 
@@ -357,6 +360,9 @@ Four limits:
 2. **Wildcards are not exempt.**
 3. **Not in effect under the high-interception / read-only allowlist tiers.**
 4. **The window is limited**: 8 hours by default, after which the exemption no longer applies; the ledger holds at most 5000 entries, and the oldest are evicted by time once it overflows.
+5. **Temp files ignore the window**: anything whose name looks temporary (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`) stays exempt as long as it is in the ledger — no matter how old. Cleaning up its own probe scripts, screenshots and logs never bothers you.
+
+On a side note: `cd` into a directory and delete a bare filename (`cd /d/x && rm -f .tmp-a.mjs`) is recognised too — no need to spell out the full path.
 
 Adjust the window with `/guard-temp`:
 
@@ -634,7 +640,7 @@ MIT, see [LICENSE](./LICENSE).
 - запись при выполнении команд `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` — берутся пути, встречающиеся в команде;
 - последующее удаление этих путей пропускается напрямую на уровнях **низкая защита / по умолчанию**.
 
-**Распознаются только пути, зарегистрированные в реестре** — файлы, созданные вами самими, в него не попадают и по-прежнему требуют подтверждения. Именно поэтому плагин не трогает содержимое файлов и не смотрит на время создания.
+**Распознаются только пути, зарегистрированные в реестре** — файлы, созданные вами самими, в него не попадают и по-прежнему требуют подтверждения. Именно поэтому плагин не трогает содержимое файлов, а смотрит только на путь и время записи в реестре.
 
 Четыре ограничения:
 
@@ -642,6 +648,9 @@ MIT, see [LICENSE](./LICENSE).
 2. **Подстановочные знаки не освобождаются.**
 3. **Не действует на уровнях высокое перехватывание / только чтение.**
 4. **Окно ограничено**: по умолчанию 8 часов, после чего освобождение не действует; в реестре не более 5000 записей, при переполнении самые старые вытесняются по времени.
+5. **Временные файлы не подчиняются окну**: если имя выглядит временным (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`), файл освобождается навсегда, пока он есть в реестре. Уборка своих пробных скриптов, скриншотов и логов больше не будет вас беспокоить.
+
+Кстати: удаление голого имени после `cd` (`cd /d/x && rm -f .tmp-a.mjs`) тоже распознаётся — полный путь указывать не нужно.
 
 Окно настраивается командой `/guard-temp`:
 
@@ -919,7 +928,7 @@ MIT, см. [LICENSE](./LICENSE).
 - `Set-Content` / `Out-File` / `New-Item` / `Copy-Item` / `Move-Item` などのコマンド実行時に、コマンド内に現れるパスを記録；
 - その後これらのパスを削除するとき、**低ガード / デフォルト** レベルでは直接通過。
 
-**台帳に登録されたパスだけを認識します** — あなた自身が作成したファイルは台帳にないため、従来どおり確認が必要です。だからこそファイルの中身には触れず、作成時刻も見ません。
+**台帳に登録されたパスだけを認識します** — あなた自身が作成したファイルは台帳にないため、従来どおり確認が必要です。だからこそファイルの中身には触れず、パスと台帳の記録時刻だけを見ます。
 
 4つの制限：
 
@@ -927,6 +936,9 @@ MIT, см. [LICENSE](./LICENSE).
 2. **ワイルドカードは免除しません。**
 3. **高インターセプト / 読み取り専用ホワイトリストのレベルでは効きません。**
 4. **時間枠は有限**：既定 8 時間、過ぎると免除されません；台帳は最大 5000 件、超えたら古いものから時間順に追い出されます。
+5. **一時ファイルは時間枠を見ません**：名前が一時ファイルらしいもの（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`）は、台帳に載っていればどれだけ古くても免除されます。モデルが自分の調査用スクリプト・スクリーンショット・ログを片付けるときに、もう煩わされることはありません。
+
+ちなみに：`cd` してから裸のファイル名を消す書き方（`cd /d/x && rm -f .tmp-a.mjs`）も認識します。フルパスを書く必要はありません。
 
 時間枠は `/guard-temp` で調整します：
 
