@@ -94,7 +94,8 @@
 
 **这是软约束，不是安全边界。** 它挡不住一个执意要删东西的模型：
 
-- 换个写法的删除看不见：`[System.IO.File]::Delete()`、`fs.rmSync`、`robocopy /MIR` 覆盖。
+- 换个写法的删除看不见：`robocopy /MIR` 覆盖、`run_code` 里现拼的 JS，以及 `getattr(os,'remove')` 这种绕开字面量的写法。
+- 内联脚本里的删除能认一部分：`python -c`、`node -e`、`pwsh -Command`、`bash -c` 里出现 `os.remove` / `shutil.rmtree` / `fs.rmSync` / `[IO.File]::Delete` 会按删除处理；但别名、字符串拼接、变量间接调用照样绕得过去。
 - `run_code` 里现拼 JS 删文件不经过任何命令解析，不在管辖范围；`write` / `edit` 只查状态目录和配置文件，写别处不拦。
 - ops 工具靠「工具名 + 参数结构」识别。dsh-ops 改名或改参数时要同步更新守卫——名字里带删除/写入字样的未知 ops 工具已经兜底拦了，改成完全不相干的名字则兜不住。
 - 状态目录的锁靠「看不见」而不是权限——模型换个不把路径写出来的写法（运行时拼字符串、`node -e` 里现拼）就能绕过。
@@ -167,7 +168,7 @@ New-Item -ItemType Junction `
 
 ```
 apply; tools=object enabled=true policy=default
-commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-cleantoken /guard-dev
 ```
 
 只有第一行 = 插件加载了但命令没注册（`commands` 服务晚于 20 秒就绪）；两行都没有 = 插件没加载。
@@ -228,6 +229,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | 切换档位 |
 | `/guard-temp [小时]` | 调整临时文件免审窗口；不带参数循环切换，`0` 关掉 |
 | `/guard-gettoken` | 取出待放行批次的 token；被拦了多批就一次全列出来，每批一个（**这是给用户的，模型拿不到输出**） |
+| `/guard-cleantoken` | 一次清空所有待放行 token，全部立刻失效（不确定那批是想放行什么时用） |
 | `/guard-dev [on\|off]` | 切开发者模式；不带参数取反 |
 
 ## 环境变量
@@ -383,7 +385,8 @@ Tier, window, and switches are **not** in `state/` — they live in the plugin c
 
 **This is a soft constraint, not a security boundary.** It cannot stop a model determined to delete something:
 
-- Deletions written differently are invisible: `[System.IO.File]::Delete()`, `fs.rmSync`, overwriting via `robocopy /MIR`.
+- Deletions written differently are invisible: overwriting via `robocopy /MIR`, JS assembled on the fly inside `run_code`, and tricks like `getattr(os,'remove')` that avoid the literal name.
+- Deletions inside inline scripts are partly caught: `os.remove` / `shutil.rmtree` / `fs.rmSync` / `[IO.File]::Delete` appearing in `python -c`, `node -e`, `pwsh -Command` or `bash -c` count as deletion; aliases, string concatenation and indirect calls still slip through.
 - The `run_code` tool can delete files by assembling JavaScript on the fly, with no command parsing involved, so it is out of scope; `write` / `edit` only check the state directory and config files, and writing anywhere else isn't blocked.
 - The ops tools are recognised by "tool name + argument shape". If dsh-ops renames them or changes their arguments, the guard has to be updated — unknown ops tools whose names carry delete/write wording are already caught by the fallback, but names that look nothing like it are not.
 - The state directory lock relies on "invisibility" rather than permissions — the model can bypass it by writing the path differently (assembling strings at runtime, building them on the fly inside `node -e`).
@@ -454,7 +457,7 @@ After restarting, check the log (default `%TEMP%\dsh-fileguard.log`); there shou
 
 ```
 apply; tools=object enabled=true policy=default
-commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-cleantoken /guard-dev
 ```
 
 Only the first line = the plugin loaded but commands weren't registered (the `commands` service became ready after 20 seconds); neither line = the plugin didn't load.
@@ -511,6 +514,7 @@ Drive roots are not in this list — they're determined separately by a regex, a
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Switch tiers |
 | `/guard-temp [hours]` | Adjust the temporary-file exemption window; without an argument it cycles, `0` turns it off |
 | `/guard-gettoken` | Fetch the token for the pending batch; if several are blocked it lists them all at once, one token each (**this is for the user; the model cannot see the output**) |
+| `/guard-cleantoken` | Wipe every pending token at once; all of them stop working immediately (use it when you're not sure what that batch was about to approve) |
 | `/guard-dev [on\|off]` | Toggle developer mode; without an argument it inverts |
 
 ## Environment variables
@@ -666,7 +670,8 @@ MIT, see [LICENSE](./LICENSE).
 
 **Это мягкое ограничение, а не граница безопасности.** Оно не остановит модель, которая во что бы то ни стало решила что-то удалить:
 
-- Удаление, записанное иначе, не видно: `[System.IO.File]::Delete()`, `fs.rmSync`, перезапись через `robocopy /MIR`.
+- Удаление, записанное иначе, не видно: перезапись через `robocopy /MIR`, JS, собранный на ходу внутри `run_code`, и трюки вроде `getattr(os,'remove')`, обходящие литерал.
+- Удаление внутри встроенных скриптов теперь частично распознаётся: `os.remove` / `shutil.rmtree` / `fs.rmSync` / `[IO.File]::Delete` в `python -c`, `node -e`, `pwsh -Command` или `bash -c` считаются удалением; но алиасы, склейка строк и косвенные вызовы по-прежнему проскакивают.
 - Инструмент `run_code` может удалять файлы, собирая JavaScript на ходу, без какого-либо разбора команд, поэтому он вне зоны действия; `write` / `edit` проверяют только каталог состояния и файлы конфигурации, запись в другие места не блокируется.
 - Инструменты ops распознаются по «имени инструмента + структуре аргументов». Если dsh-ops переименует их или изменит аргументы, защиту придётся обновить: неизвестные ops-инструменты, в имени которых есть слова об удалении/записи, ловятся запасным правилом, а вот совсем непохожие имена — нет.
 - Замок на каталог состояния держится на «невидимости», а не на правах доступа — модель обойдёт его, если запишет путь иначе (склеит строку во время выполнения, соберёт прямо в `node -e`).
@@ -737,7 +742,7 @@ New-Item -ItemType Junction `
 
 ```
 apply; tools=object enabled=true policy=default
-commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-cleantoken /guard-dev
 ```
 
 Только первая строка = плагин загрузился, но команды не зарегистрированы (служба `commands` стала готова позже 20 секунд); нет ни одной = плагин не загрузился.
@@ -794,6 +799,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Переключение уровня |
 | `/guard-temp [часы]` | Настроить окно освобождения временных файлов; без аргумента — циклическое переключение, `0` отключает |
 | `/guard-gettoken` | Получить токен ожидающей партии; если заблокировано несколько, все они перечисляются сразу, по токену на каждую (**это для пользователя; модель вывода не видит**) |
+| `/guard-cleantoken` | Одним разом стереть все ожидающие токены — все сразу перестают работать (когда непонятно, что именно собиралась разрешить та партия) |
 | `/guard-dev [on\|off]` | Переключить режим разработчика; без аргумента — инвертировать |
 
 ## Переменные окружения
@@ -949,7 +955,8 @@ MIT, см. [LICENSE](./LICENSE).
 
 **これはソフトな制約であり、セキュリティ境界ではありません。** 何としても削除しようとするモデルは止められません：
 
-- 別の書き方の削除は見えません：`[System.IO.File]::Delete()`、`fs.rmSync`、`robocopy /MIR` による上書き。
+- 別の書き方の削除は見えません：`robocopy /MIR` による上書き、`run_code` 内でその場で組み立てた JS、`getattr(os,'remove')` のようなリテラルを避ける書き方。
+- インラインスクリプト内の削除は一部だけ認識します：`python -c`、`node -e`、`pwsh -Command`、`bash -c` の中に `os.remove` / `shutil.rmtree` / `fs.rmSync` / `[IO.File]::Delete` があれば削除として扱いますが、エイリアス・文字列連結・間接呼び出しはすり抜けます。
 - `run_code` はその場で JavaScript を組み立ててファイルを削除でき、コマンド解析を一切通らないため管轄外です。`write` / `edit` は状態ディレクトリと設定ファイルだけを確認し、それ以外の場所への書き込みはブロックしません。
 - ops ツールは「ツール名 + 引数の構造」で識別しています。dsh-ops が名前や引数を変えたらガード側も更新が必要です。削除・書き込みを思わせる語を含む未知の ops ツールは予備ルールで拾いますが、まったく似ていない名前に変わると拾えません。
 - 状態ディレクトリのロックは権限ではなく「見えないこと」に頼っています — モデルがパスを書かない形（実行時に文字列を組み立てる、`node -e` の中でその場で組む）に変えれば回避できます。
@@ -1020,7 +1027,7 @@ profile の `cordis.patch.yml` で `- insert:` を使って無理やり挿し込
 
 ```
 apply; tools=object enabled=true policy=default
-commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-dev
+commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /guard-gettoken /guard-cleantoken /guard-dev
 ```
 
 1行目だけ = プラグインは読み込まれたがコマンドが登録されていない（`commands` サービスの準備が 20 秒より遅かった）；どちらもない = プラグインが読み込まれていない。
@@ -1077,6 +1084,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | レベルの切り替え |
 | `/guard-temp [時間]` | 一時ファイルの審査免除時間枠を調整；引数なしで循環切替、`0` でオフ |
 | `/guard-gettoken` | 承認待ちバッチのトークンを取り出す。複数ブロックされていれば一度にすべて列挙され、それぞれに 1 つのトークンが付く（**これはあなた用。モデルは出力を見られません**） |
+| `/guard-cleantoken` | 承認待ちのトークンをすべて一度に消す。すべて即座に無効になります（そのバッチが何を許可しようとしていたか分からないときに） |
 | `/guard-dev [on\|off]` | 開発者モードの切り替え；引数なしで反転 |
 
 ## 環境変数
