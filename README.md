@@ -4,10 +4,22 @@
 
 给 **DeepSeek Harness** 用的文件守卫插件。
 
-在全权模式下，模型动手删东西、改东西之前先拦一道，逼它停下来把「动的是什么、有什么用、删改了会怎样」用自然语言讲清楚，再由你用token（相当于钥匙）决定放不放行。模型自己干活时产生的临时文件走旁路台账，窗口期内免审，不打扰你。
+在全权模式下，模型动手删东西、改东西之前先拦一道，逼它停下来把「动的是什么、有什么用、删改了会怎样」用自然语言讲清楚，再由你用token（相当于钥匙）决定放不放行。模型自己干活时产生的临时文件走旁路台账，只要文件名长得像临时文件就不看时间窗口、直接免审，不打扰你。
 
 它解决的具体问题：DSH 开 `workspace-write` 之后，真正拦危险操作的是系统提权确认框，而那个框里全是英文路径和一串 `$ % #` 符号，扫一眼判断不了点下去会发生什么，手一快就同意了。
 而即使是打开全权模式后，这个插件可以强制模型先调研文件内容，给一份能看懂的，按风险分层次的自然语言说明，而决定权交还给你。（哪怕这会多用一点点token余额，但这也理应是值得的...）
+
+---
+
+## 运行环境
+
+| 组件 | 版本 | 说明 |
+|---|---|---|
+| DSH 桌面版（`dsh-desktop`） | `0.2.1-rc.3` | 内置 Node `24.21.0`、Python `3.12.14`；插件跑在这套运行时里 |
+| `dsh-ops` | `0.4.4` | `ops_*` 的工具名和参数结构按这个版本核对过 |
+| 本插件 | `0.2.3` | |
+
+DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照新版 `dsh-ops/lib/capabilities/registry.js` 更新 `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL`。名字里带 `remove/write/copy/move/batch` 的未知 ops 工具已经兜底拦了，完全不相干的名字则兜不住。
 
 ---
 
@@ -48,7 +60,7 @@
 
 **为什么 token 靠得住**：斜杠命令的输出只进日志，模型上下文里看不到——你执行 `/guard-gettoken` 拿到的东西，它没法自己生成、也没法偷看。
 
-### AI 自己写的临时文件：在一定时间内免审
+### AI 自己写的临时文件：临时名字不看窗口
 
 模型干活会造一堆一次性的东西（探测脚本、截图、日志等）。删这些还要问一次纯属互相折磨。
 
@@ -209,7 +221,7 @@ commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /gua
 |---|---|---|---|
 | `enabled` | boolean | `true` | 总开关。关掉后所有命令直接放行，等于没装 |
 | `policy` | string | `"default"` | 守卫强度：`low` / `default` / `high` / `readonly` |
-| `tempHours` | number | `8` | AI 临时文件免审窗口（小时）。`0` = 关掉这个机制，上限 720 |
+| `tempHours` | number | `8` | 台账免审窗口（小时）：普通文件过期就不再免审，临时文件名不看它。`0` = 关掉窗口，上限 720 |
 | `hintResetAt` | number | `0` | 提示词初始化：改成新时间戳后，「只出现一次」的说明会重新出现 |
 | `devMode` | boolean | `false` | 开发者模式：放行普通删改、`state/` 目录、插件自己的配置文件（这样也许能更方便地对Agent许愿帮你定制化这个插件，但这也会变得很危险），只记日志。**盘根和系统目录仍然硬拦** |
 | `protectedDirs` | string[] | 见下 | 额外保护的目录，含其下全部内容 |
@@ -255,7 +267,7 @@ enabled=false        → 放行
 devMode=true         → 只放行普通操作，仍先查盘根/系统目录
 state/ 或配置文件    → 拦死（写入类工具才查配置文件，读放行）
 ops_* 变更工具       → dryRun 放行；否则进入下面同一套判定
-非 shell 工具        → 放行（write/edit 只在 state/配置检查里被查目标路径）
+非 shell 工具        → 放行（write/edit 只在 state/配置检查里被查目标路径，顺手记台账）
 抽通配符             → 拦死
 盘根（仅删除）       → 拦死
 protectedHit         → 系统目录
@@ -264,7 +276,7 @@ protectedHit         → 系统目录
 readonly 档          → 只读白名单以外全拦
 low 档               → 删除放行
 high 档              → 删除和写入都拦
-其余                 → token 校验 → 拦一次并发 token
+其余                 → 台账免审（窗口内，或名字像临时文件）→ token 校验 → 拦一次并发 token
 ```
 
 **token**：16 位，字母表去掉 `I O 0 1` 避免抄错；存在 `state/tokens.json`，同一批目标复用同一个 token，用掉即删。识别正则 `#\s*fg[:\-]([A-Za-z0-9]{16})\b`，匹配后从命令里剥掉再解析路径，避免 token 被当成文件名。
@@ -279,7 +291,7 @@ high 档              → 删除和写入都拦
 
 **路径写法**：`C:\`、`C:/`、`\\server\` 和 git-bash 的 `/c/Users/...` 都认。MSYS 写法会先归一成 `c:/Users/...` 再和 token 里记的路径比对，所以同一份文件换个写法重发也能命中——不会退化成一串对不上的 `cmd:` 签名。
 
-**旁路台账**：只记路径不碰内容。`write`/`edit` 从 `file_path`/`filePath`/`path`/`target`/`filename` 取；shell 命令从 `extractPaths()` 取；ops 变更工具从 `targetPathList()` 取。目录不收。
+**旁路台账**：只记路径不碰内容。`write`/`edit` 从 `file_path`/`filePath`/`path`/`target`/`filename` 取；shell 命令从 `extractPaths()` 取；ops 变更工具从 `targetPathList()` 取。目录不收。窗口默认 8 小时（`tempHours`）；名字像临时文件的条目（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`）不看窗口，只要在台账上就一直免审。
 
 **状态目录保护**：路径匹配三层——绝对路径整串、`dsh-fileguard/state` 片段（挡未归一化的相对路径）、`glob` 的 `pattern`。原生工具、shell 命令、ops 工具走的是同一份路径抽取。
 
@@ -299,11 +311,21 @@ MIT，见 [LICENSE](./LICENSE)。
 
 A file-guard plugin for **DeepSeek Harness**.
 
-In full-permission mode, it steps in before the model deletes or modifies anything, forcing it to stop and explain in plain language "what this is, what it's used for, and what happens if it's deleted or changed" — then you decide whether to let it through with a token (essentially a key). Temporary files the model produces while working go through a bypass ledger and are exempt from review within a time window, so you aren't disturbed.
+In full-permission mode, it steps in before the model deletes or modifies anything, forcing it to stop and explain in plain language "what this is, what it's used for, and what happens if it's deleted or changed" — then you decide whether to let it through with a token (essentially a key). Scratch files the model produces while working go through a bypass ledger, and as long as the name looks temporary they are exempt regardless of age, so you aren't disturbed.
 
 The concrete problem it solves: once DSH enables `workspace-write`, the thing actually blocking dangerous operations is the system elevation confirmation dialog — but that dialog is all English paths and a string of `$ % #` symbols. One glance isn't enough to tell what will happen when you click, and a moment of haste is all it takes to approve.
 
 And even after full-permission mode is on, this plugin can force the model to first investigate the file contents and hand you a readable, risk-tiered, plain-language explanation — giving the decision back to you. (It costs a bit of extra token budget, but that should be worth it...)
+
+## Runtime environment
+
+| Component | Version | Notes |
+|---|---|---|
+| DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Bundles Node `24.21.0` and Python `3.12.14`; the plugin runs inside this runtime |
+| `dsh-ops` | `0.4.4` | `ops_*` tool names and argument shapes were verified against this version |
+| This plugin | `0.2.3` | |
+
+After upgrading DSH or dsh-ops, if the `ops_*` tools are renamed or their arguments change, update `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` against the new `dsh-ops/lib/capabilities/registry.js`. Unknown ops tools whose names contain `remove/write/copy/move/batch` are already covered by the fallback; completely unrelated names are not.
 
 ## One by one, in plain terms
 
@@ -342,7 +364,7 @@ The model receives a prompt and will be asked to:
 
 **Why the token can be trusted**: the output of slash commands goes only to the log and is not visible in the model's context — what you get from `/guard-gettoken` is something it can neither generate itself nor peek at.
 
-### Temporary files the AI wrote itself: exempt for a limited time
+### Temporary files the AI wrote itself: temporary names skip the window
 
 When working, the model produces a pile of one-off things (probe scripts, screenshots, logs, etc.). Asking again just to delete them is mutual torture.
 
@@ -497,7 +519,7 @@ All can be changed in **Settings → File Guard**, or written into the profile's
 |---|---|---|---|
 | `enabled` | boolean | `true` | Master switch. When off, all commands pass directly — as if not installed |
 | `policy` | string | `"default"` | Guard strength: `low` / `default` / `high` / `readonly` |
-| `tempHours` | number | `8` | AI temporary-file exemption window (hours). `0` = turn the mechanism off; max 720 |
+| `tempHours` | number | `8` | Ledger exemption window (hours): ordinary files drop out after it, temporary names ignore it. `0` = turn the window off; max 720 |
 | `hintResetAt` | number | `0` | Prompt initialization: change to a new timestamp and the "show once" explanation appears again |
 | `devMode` | boolean | `false` | Developer mode: allows ordinary deletions/modifications, the `state/` directory, and the plugin's own config files (this may make it easier to ask an agent to customize the plugin for you, but it also becomes very dangerous); only logged. **Drive roots and system directories are still hard-blocked** |
 | `protectedDirs` | string[] | see below | Additional protected directories, including everything beneath them |
@@ -541,7 +563,7 @@ enabled=false → allow
 devMode=true  → allow ordinary operations only, still check drive roots / system dirs first
 state/ or config file → hard block (config files only for write-type tools; reads allowed)
 ops_* mutation tool → allow dryRun; otherwise fall through to the same checks below
-non-shell tool → allow (write/edit targets are only inspected by the state/config checks)
+non-shell tool → allow (write/edit targets are only inspected by the state/config checks, and recorded in the ledger anyway)
 wildcard detected → hard block
 drive root (delete only) → hard block
 protectedHit → system directories
@@ -550,7 +572,7 @@ protectedHit → system directories
 readonly tier → block everything outside the read-only allowlist
 low tier → deletion allowed
 high tier → both deletion and writing blocked
-otherwise → token check → block once and issue a token
+otherwise → ledger exemption (within the window, or the name looks temporary) → token check → block once and issue a token
 ```
 
 **token**: 16 characters, with `I O 0 1` removed from the alphabet to avoid transcription errors; stored in `state/tokens.json`; the same batch of targets reuses one token, which is deleted once used. Recognition regex `#\s*fg[:\-]([A-Za-z0-9]{16})\b`; after matching, it is stripped from the command before paths are parsed, so the token isn't treated as a filename.
@@ -559,15 +581,13 @@ otherwise → token check → block once and issue a token
 
 **Commands whose paths can't be extracted** (`git clean -fdx`, `robocopy /MIR`) bind the token to a signature of the command text `cmd:<kind>|<normalized command>`, leaving no "resend and it passes" escape hatch. The same applies to `ops_batch` with an `operationsRef` and no inline `operations` — when it's impossible to see which files are affected, the call is held to that signature.
 
-**Path styles** in this context: `C:\`, `C:/`, `\\server\` and git-bash's `/c/Users/...` are all recognised. An MSYS path is normalised to `c:/Users/...` before comparison — otherwise a path written in git-bash notation would never match the `C:`-style path stored in the token.
-
 **The dsh-ops tool set**: `ops_remove`, `ops_write_file`, `ops_edit_file`, `ops_replace`, `ops_copy`, `ops_move` and `ops_batch` (when `action` is `run` / `resume`) are handled with the same authority as shell commands — tiers, drive roots, system directories, `state/` and config files all apply exactly as before; `dryRun: true`, `action=plan` and the read-only ops tools (`ops_stat`, `ops_grep`, `ops_result`, ...) are unaffected. Paths are taken from `path` / `to` / `files[].path` / `pattern` / `glob[]` / `script_path` / `workdir`, and `ops_batch` additionally joins `operations[].path` and `operations[].to` onto `root` as absolute paths. The `ops_` prefix is hardcoded in `dsh-ops/lib/policy.js` and can't be changed; unknown ops tools whose names contain `remove/move/rename/write/edit/replace/copy/truncate/batch` are also treated as mutations, so a plugin upgrade can't quietly open a new back door.
 
 **How ops tools carry a token**: they have no command line, and their argument schemas are closed (`additionalProperties: false`), so `# fg:<token>` cannot be smuggled in. Instead, `/guard-gettoken` marks the token as `seen` at the moment you see it — only a token you have personally laid eyes on may pass through the ops channel; the model can't fetch it from `state/tokens.json`, which is hard-blocked for it. Just have it resend the identical call, without changing a single parameter. When several batches are blocked, `/guard-gettoken` lists every one of them with its own token, none overwriting another; a batch expires only when its own token is used up, and the rest stay put.
 
 **Path styles**: `C:\`, `C:/`, `\\server\` and git-bash's `/c/Users/...` are all recognised. An MSYS path is normalised to `c:/Users/...` before being compared with the paths recorded in the token, so resending the same file in a different notation still matches — it never degrades into a mismatched `cmd:` signature.
 
-**Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`; for ops mutation tools from `targetPathList()`. Directories are not accepted.
+**Bypass ledger**: records paths only, never contents. For `write`/`edit` it reads from `file_path`/`filePath`/`path`/`target`/`filename`; for shell commands from `extractPaths()`; for ops mutation tools from `targetPathList()`. Directories are not accepted. The window defaults to 8 hours (`tempHours`); entries whose name looks temporary (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`) ignore the window and stay exempt as long as they are in the ledger.
 
 **State directory protection**: path matching at three levels — the whole absolute path, the `dsh-fileguard/state` segment (catching unnormalized relative paths), and the `glob` `pattern`. Native tools, shell commands and ops tools all go through the same path extraction.
 
@@ -587,11 +607,21 @@ MIT, see [LICENSE](./LICENSE).
 
 Плагин-страж файлов для **DeepSeek Harness**.
 
-В режиме полных прав он встаёт на пути модели перед тем, как она что-либо удалит или изменит: модель обязана остановиться и объяснить обычным языком «что это, зачем нужно, что будет, если удалить или изменить». Решение о пропуске принимаете вы с помощью токена (по сути, ключа). Временные файлы, которые модель создаёт по ходу работы, идут через обходной реестр и в пределах временного окна не требуют подтверждения, так что вам не мешают.
+В режиме полных прав он встаёт на пути модели перед тем, как она что-либо удалит или изменит: модель обязана остановиться и объяснить обычным языком «что это, зачем нужно, что будет, если удалить или изменить». Решение о пропуске принимаете вы с помощью токена (по сути, ключа). Временные файлы, которые модель создаёт по ходу работы, идут через обходной реестр, и пока имя похоже на временное, они не требуют подтверждения независимо от возраста — так что вам не мешают.
 
 Какую конкретную проблему он решает: когда в DSH включён `workspace-write`, по-настоящему опасные операции блокирует системное окно подтверждения повышения прав — но в нём только английские пути и строка символов `$ % #`. С одного взгляда не понять, что произойдёт после нажатия, и одного порыва достаточно, чтобы согласиться.
 
 И даже когда режим полных прав уже включён, этот плагин может заставить модель сначала изучить содержимое файлов и выдать читаемое объяснение на естественном языке, разложенное по уровням риска, — а решение вернуть вам. (Это стоит немного дополнительного бюджета токенов, но оно того стоит...)
+
+## Окружение
+
+| Компонент | Версия | Примечание |
+|---|---|---|
+| DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Внутри Node `24.21.0` и Python `3.12.14`; плагин работает в этой среде |
+| `dsh-ops` | `0.4.4` | Имена инструментов `ops_*` и структура аргументов сверены с этой версией |
+| Этот плагин | `0.2.3` | |
+
+После обновления DSH или dsh-ops, если инструменты `ops_*` переименованы или изменены их аргументы, обновите `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` по новому файлу `dsh-ops/lib/capabilities/registry.js`. Неизвестные ops-инструменты с `remove/write/copy/move/batch` в имени уже ловятся запасным правилом; совсем непохожие имена — нет.
 
 ## Разбираем по пунктам
 
@@ -630,7 +660,7 @@ MIT, see [LICENSE](./LICENSE).
 
 **Почему токену можно доверять**: вывод слэш-команд попадает только в лог и не виден в контексте модели — то, что вы получаете через `/guard-gettoken`, она не может ни сгенерировать сама, ни подсмотреть.
 
-### Временные файлы, созданные самим ИИ: без подтверждения в течение ограниченного времени
+### Временные файлы, созданные самим ИИ: временное имя — окно не важно
 
 В работе модель создаёт кучу одноразовых вещей (скрипты-зонды, скриншоты, логи и т. п.). Спрашивать разрешение на их удаление — просто взаимная мука.
 
@@ -785,7 +815,7 @@ commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /gua
 |---|---|---|---|
 | `enabled` | boolean | `true` | Общий переключатель. Когда выключен, все команды проходят напрямую — как будто плагин не установлен |
 | `policy` | string | `"default"` | Сила защиты: `low` / `default` / `high` / `readonly` |
-| `tempHours` | number | `8` | Окно освобождения временных файлов ИИ (часы). `0` = отключить механизм, максимум 720 |
+| `tempHours` | number | `8` | Окно освобождения по реестру (часы): обычные файлы после него уже не освобождаются, а временные имена его не смотрят. `0` = выключить окно, максимум 720 |
 | `hintResetAt` | number | `0` | Инициализация подсказки: после смены на новую метку времени пояснение «показывается один раз» появится снова |
 | `devMode` | boolean | `false` | Режим разработчика: пропускает обычные удаления/изменения, каталог `state/` и собственные файлы конфигурации плагина (так, возможно, удобнее попросить агента доработать плагин под вас, но это и становится очень опасно); только пишется в лог. **Корни дисков и системные каталоги по-прежнему жёстко блокируются** |
 | `protectedDirs` | string[] | см. ниже | Дополнительно защищённые каталоги вместе со всем их содержимым |
@@ -829,7 +859,7 @@ enabled=false → пропустить
 devMode=true  → пропускать только обычные операции, но сначала по-прежнему проверять корни дисков / системные каталоги
 state/ или файл конфигурации → жёсткая блокировка (файлы конфигурации проверяются только для пишущих инструментов; чтение пропускается)
 ops_* изменяющий инструмент → пропустить dryRun; иначе перейти к тем же проверкам ниже
-не-shell инструмент → пропустить (целевые пути write/edit проверяются только в проверках state/конфигурации)
+не-shell инструмент → пропустить (целевые пути write/edit проверяются только в проверках state/конфигурации, а запись попутно заносится в реестр)
 обнаружен подстановочный знак → жёсткая блокировка
 корень диска (только удаление) → жёсткая блокировка
 protectedHit → системные каталоги
@@ -838,7 +868,7 @@ protectedHit → системные каталоги
 уровень readonly → всё вне белого списка только для чтения блокируется
 уровень low → удаление пропускается
 уровень high → блокируются и удаление, и запись
-иначе → проверка токена → блок один раз и выдача токена
+иначе → освобождение по реестру (в окне или имя похоже на временное) → проверка токена → блок один раз и выдача токена
 ```
 
 **token**: 16 символов, из алфавита убраны `I O 0 1` во избежание ошибок при переписывании; хранится в `state/tokens.json`; для одной партии целей переиспользуется один токен, после использования удаляется. Регулярное выражение распознавания `#\s*fg[:\-]([A-Za-z0-9]{16})\b`; после совпадения токен вырезается из команды перед разбором путей, чтобы его не приняли за имя файла.
@@ -855,7 +885,7 @@ protectedHit → системные каталоги
 
 **Запись путей**: `C:\`, `C:/`, `\\server\` и git-bash-стиль `/c/Users/...` — всё распознаётся. MSYS-путь сначала нормализуется в `c:/Users/...` и только потом сравнивается с путями в токене, поэтому тот же файл, переотправленный в другой записи, всё равно совпадёт — и не выродится в несовпадающую подпись `cmd:`.
 
-**Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`; для изменяющих инструментов ops — из `targetPathList()`. Каталоги не принимаются.
+**Обходной реестр**: пишет только пути, не касается содержимого. Для `write`/`edit` берётся из `file_path`/`filePath`/`path`/`target`/`filename`; для shell-команд — из `extractPaths()`; для изменяющих инструментов ops — из `targetPathList()`. Каталоги не принимаются. Окно по умолчанию 8 часов (`tempHours`); записи, чьё имя похоже на временное (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`), окно не смотрят и остаются освобождёнными, пока есть в реестре.
 
 **Защита каталога состояния**: сопоставление путей в три слоя — весь абсолютный путь, фрагмент `dsh-fileguard/state` (ловит ненормализованные относительные пути) и `pattern` у `glob`. Нативные инструменты, shell-команды и инструменты ops проходят через одно и то же извлечение путей.
 
@@ -875,11 +905,21 @@ MIT, см. [LICENSE](./LICENSE).
 
 **DeepSeek Harness** 用のファイルガードプラグインです。
 
-全権モードでは、モデルが何かを削除・変更する前に一度止めさせ、「これは何か、何に使うのか、削除・変更するとどうなるか」を自然言語で説明させます。そのうえで、あなたがトークン（鍵のようなもの）を使って許可するかどうかを決めます。モデルが作業中に作った一時ファイルはバイパス台帳を通り、時間内は審査免除なので、あなたを煩わせません。
+全権モードでは、モデルが何かを削除・変更する前に一度止めさせ、「これは何か、何に使うのか、削除・変更するとどうなるか」を自然言語で説明させます。そのうえで、あなたがトークン（鍵のようなもの）を使って許可するかどうかを決めます。モデルが作業中に作った一時ファイルはバイパス台帳を通り、名前が一時ファイルらしければ時間枠に関係なく審査免除なので、あなたを煩わせません。
 
 これが解決する具体的な問題：DSH で `workspace-write` を有効にすると、危険な操作を実際に止めているのはシステムの権限昇格確認ダイアログです。しかしそのダイアログは英語のパスと `$ % #` の記号ばかりで、一目見ただけではクリックしたら何が起きるか判断できず、手が滑ればそのまま同意してしまいます。
 
 そして全権モードを有効にした後でも、このプラグインはモデルにファイル内容を先に調べさせ、理解できるリスク階層付きの自然言語の説明を出させ、決定権をあなたに返します。（少し余分なトークンを使いますが、それだけの価値はあるはずです…）
+
+## 実行環境
+
+| コンポーネント | バージョン | 補足 |
+|---|---|---|
+| DSH デスクトップ版（`dsh-desktop`） | `0.2.1-rc.3` | Node `24.21.0`・Python `3.12.14` を内蔵。プラグインはこのランタイム上で動作します |
+| `dsh-ops` | `0.4.4` | `ops_*` のツール名と引数構造はこのバージョンで確認済み |
+| このプラグイン | `0.2.3` | |
+
+DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合は、新しい `dsh-ops/lib/capabilities/registry.js` に合わせて `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` を更新してください。名前に `remove/write/copy/move/batch` を含む未知の ops ツールは予備ルールで拾えますが、まったく似ていない名前は拾えません。
 
 ## 一つずつ説明します
 
@@ -918,7 +958,7 @@ MIT, см. [LICENSE](./LICENSE).
 
 **トークンが信頼できる理由**：スラッシュコマンドの出力はログにだけ残り、モデルのコンテキストには見えません — `/guard-gettoken` で得たものは、モデルが自分で生成することも盗み見ることもできないのです。
 
-### AI 自身が書いた一時ファイル：一定時間は審査免除
+### AI 自身が書いた一時ファイル：一時ファイル名なら時間枠を見ない
 
 モデルが作業すると、使い捨てのもの（調査スクリプト、スクリーンショット、ログなど）が山ほどできます。その削除までいちいち確認するのはお互い苦痛です。
 
@@ -1073,7 +1113,7 @@ commands: /guard-low /guard-default /guard-high /guard-readonly /guard-temp /gua
 |---|---|---|---|
 | `enabled` | boolean | `true` | 全体スイッチ。オフにするとすべてのコマンドが直接通過し、未インストールと同じになる |
 | `policy` | string | `"default"` | ガードの強さ：`low` / `default` / `high` / `readonly` |
-| `tempHours` | number | `8` | AI の一時ファイル審査免除の時間枠（時間）。`0` = この仕組みをオフ、上限 720 |
+| `tempHours` | number | `8` | 台帳による審査免除の時間枠（時間）：通常ファイルはこれを過ぎると免除されず、一時ファイル名はこれを見ません。`0` = 時間枠をオフ、上限 720 |
 | `hintResetAt` | number | `0` | プロンプトの初期化：新しいタイムスタンプに変えると、「一度だけ表示」の説明が再び現れる |
 | `devMode` | boolean | `false` | 開発者モード：通常の削除・変更、`state/` ディレクトリ、プラグイン自身の設定ファイルを通過させる（こうすればエージェントに頼んでこのプラグインをカスタマイズしてもらいやすくなるかもしれませんが、とても危険にもなります）。ログのみ記録。**ドライブのルートとシステムディレクトリは依然として完全ブロック** |
 | `protectedDirs` | string[] | 下記参照 | 追加で保護するディレクトリ。その下のすべてを含む |
@@ -1117,7 +1157,7 @@ enabled=false → 通過
 devMode=true  → 通常操作のみ通過。ただし先にドライブのルート / システムディレクトリを確認
 state/ または設定ファイル → 完全ブロック（設定ファイルは書き込み系ツールのみ確認、読み取りは通過）
 ops_* の変更系ツール → dryRun なら通過、それ以外は下の同じ判定へ
-shell 以外のツール → 通過（write/edit の対象パスは状態/設定の確認でだけ見る）
+shell 以外のツール → 通過（write/edit の対象パスは状態/設定の確認でだけ見る。書き込みは台帳にも記録）
 ワイルドカード検出 → 完全ブロック
 ドライブのルート（削除時のみ） → 完全ブロック
 protectedHit → システムディレクトリ
@@ -1126,7 +1166,7 @@ protectedHit → システムディレクトリ
 readonly レベル → 読み取り専用ホワイトリスト以外はすべてブロック
 low レベル → 削除を通過
 high レベル → 削除も書き込みもブロック
-それ以外 → トークン検証 → 一度だけブロックしてトークン発行
+それ以外 → 台帳による免除（時間枠内、または一時ファイルらしい名前）→ トークン検証 → 一度だけブロックしてトークン発行
 ```
 
 **token**：16 文字。書き写し間違いを避けるためアルファベットから `I O 0 1` を除外。`state/tokens.json` に保存し、同じ対象バッチでは同じトークンを再利用、使えば削除。認識用正規表現 `#\s*fg[:\-]([A-Za-z0-9]{16})\b`。マッチ後、パス解析の前にコマンドから取り除き、トークンがファイル名として扱われないようにします。
@@ -1143,7 +1183,7 @@ high レベル → 削除も書き込みもブロック
 
 **パスの書き方**：`C:\`、`C:/`、`\\server\`、そして git-bash の `/c/Users/...` をすべて認識します。MSYS 形式はまず `c:/Users/...` に正規化してからトークン内のパスと照合するので、同じファイルを別の書き方で再送しても一致します — 食い違う `cmd:` 署名に退化することはありません。
 
-**バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得；ops の変更系ツールは `targetPathList()` から取得。ディレクトリは受け付けません。
+**バイパス台帳**：パスのみ記録し、中身には触れません。`write`/`edit` は `file_path`/`filePath`/`path`/`target`/`filename` から取得；shell コマンドは `extractPaths()` から取得；ops の変更系ツールは `targetPathList()` から取得。ディレクトリは受け付けません。時間枠は既定で 8 時間（`tempHours`）。名前が一時ファイルらしいもの（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`）は時間枠を見ず、台帳に載っていれば免除が続きます。
 
 **状態ディレクトリの保護**：パス照合は三層 — 絶対パス全体、`dsh-fileguard/state` の断片（正規化されていない相対パスを捕捉）、`glob` の `pattern`。ネイティブツール、shell コマンド、ops ツールは同じパス抽出を通ります。
 
