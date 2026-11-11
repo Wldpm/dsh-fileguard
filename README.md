@@ -17,7 +17,7 @@
 |---|---|---|
 | DSH 桌面版（`dsh-desktop`） | `0.2.1-rc.3` | 内置 Node `24.21.0`、Python `3.12.14`；插件跑在这套运行时里 |
 | `dsh-ops` | `0.4.4` | `ops_*` 的工具名和参数结构按这个版本核对过 |
-| 本插件 | `0.2.3` | |
+| 本插件 | `0.2.4` | |
 
 DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照新版 `dsh-ops/lib/capabilities/registry.js` 更新 `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL`。名字里带 `remove/write/copy/move/batch` 的未知 ops 工具已经兜底拦了，完全不相干的名字则兜不住。
 
@@ -78,9 +78,9 @@ DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照�
 2. **通配符不放行**。
 3. **高拦截 / 纯白名单档不生效**。
 4. **窗口有限**：默认 8 小时，过期不再免审；台账最多 5000 条，超了按时间淘汰最旧的。
-5. **临时文件不看窗口**：名字像临时文件的（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`），只要在台账上，放多久都免审；模型清理自己的探测脚本、截图、日志时不会再来烦你。
+5. **临时文件不看窗口**：只有这几种名字——`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`——只要在台账上，放多久都免审。脚本（`.ps1`、`.mjs` 等）、日志、源码不在此列，超过窗口照样要确认。
 
-顺带一提：`cd` 到某个目录再删裸文件名（`cd /d/x && rm -f .tmp-a.mjs`）也能认出目标，不必写全路径。
+顺带一提：`cd` 到某个目录再删裸文件名（`cd /d/x && rm -f .tmp-a.mjs`）也能认出目标，不必写全路径；`Remove-Item a.tmp, b.tmp` 这种逗号分隔的写法同样认。
 
 窗口用 `/guard-temp` 调：
 
@@ -323,7 +323,7 @@ And even after full-permission mode is on, this plugin can force the model to fi
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Bundles Node `24.21.0` and Python `3.12.14`; the plugin runs inside this runtime |
 | `dsh-ops` | `0.4.4` | `ops_*` tool names and argument shapes were verified against this version |
-| This plugin | `0.2.3` | |
+| This plugin | `0.2.4` | |
 
 After upgrading DSH or dsh-ops, if the `ops_*` tools are renamed or their arguments change, update `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` against the new `dsh-ops/lib/capabilities/registry.js`. Unknown ops tools whose names contain `remove/write/copy/move/batch` are already covered by the fallback; completely unrelated names are not.
 
@@ -382,9 +382,9 @@ Four limits:
 2. **Wildcards are not exempt.**
 3. **Not in effect under the high-interception / read-only allowlist tiers.**
 4. **The window is limited**: 8 hours by default, after which the exemption no longer applies; the ledger holds at most 5000 entries, and the oldest are evicted by time once it overflows.
-5. **Temp files ignore the window**: anything whose name looks temporary (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`) stays exempt as long as it is in the ledger — no matter how old. Cleaning up its own probe scripts, screenshots and logs never bothers you.
+5. **Temp files ignore the window**: only these four shapes — `.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp` — stay exempt as long as they are in the ledger, no matter how old. Scripts (`.ps1`, `.mjs`, …), logs and source files are not on that list: past the window they need confirmation like anything else.
 
-On a side note: `cd` into a directory and delete a bare filename (`cd /d/x && rm -f .tmp-a.mjs`) is recognised too — no need to spell out the full path.
+On a side note: `cd` into a directory and delete a bare filename (`cd /d/x && rm -f .tmp-a.mjs`) is recognised too — no need to spell out the full path; comma-separated lists such as `Remove-Item a.tmp, b.tmp` are understood as well.
 
 Adjust the window with `/guard-temp`:
 
@@ -619,7 +619,7 @@ MIT, see [LICENSE](./LICENSE).
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Внутри Node `24.21.0` и Python `3.12.14`; плагин работает в этой среде |
 | `dsh-ops` | `0.4.4` | Имена инструментов `ops_*` и структура аргументов сверены с этой версией |
-| Этот плагин | `0.2.3` | |
+| Этот плагин | `0.2.4` | |
 
 После обновления DSH или dsh-ops, если инструменты `ops_*` переименованы или изменены их аргументы, обновите `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` по новому файлу `dsh-ops/lib/capabilities/registry.js`. Неизвестные ops-инструменты с `remove/write/copy/move/batch` в имени уже ловятся запасным правилом; совсем непохожие имена — нет.
 
@@ -678,9 +678,9 @@ MIT, see [LICENSE](./LICENSE).
 2. **Подстановочные знаки не освобождаются.**
 3. **Не действует на уровнях высокое перехватывание / только чтение.**
 4. **Окно ограничено**: по умолчанию 8 часов, после чего освобождение не действует; в реестре не более 5000 записей, при переполнении самые старые вытесняются по времени.
-5. **Временные файлы не подчиняются окну**: если имя выглядит временным (`.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp`), файл освобождается навсегда, пока он есть в реестре. Уборка своих пробных скриптов, скриншотов и логов больше не будет вас беспокоить.
+5. **Временные файлы не подчиняются окну**: только эти четыре формы — `.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp` — освобождаются навсегда, пока есть в реестре. Скрипты (`.ps1`, `.mjs`, …), логи и исходники в список не входят: после окна их подтверждают как всё остальное.
 
-Кстати: удаление голого имени после `cd` (`cd /d/x && rm -f .tmp-a.mjs`) тоже распознаётся — полный путь указывать не нужно.
+Кстати: удаление голого имени после `cd` (`cd /d/x && rm -f .tmp-a.mjs`) тоже распознаётся — полный путь указывать не нужно; списки через запятую вроде `Remove-Item a.tmp, b.tmp` тоже понимаются.
 
 Окно настраивается командой `/guard-temp`:
 
@@ -917,7 +917,7 @@ MIT, см. [LICENSE](./LICENSE).
 |---|---|---|
 | DSH デスクトップ版（`dsh-desktop`） | `0.2.1-rc.3` | Node `24.21.0`・Python `3.12.14` を内蔵。プラグインはこのランタイム上で動作します |
 | `dsh-ops` | `0.4.4` | `ops_*` のツール名と引数構造はこのバージョンで確認済み |
-| このプラグイン | `0.2.3` | |
+| このプラグイン | `0.2.4` | |
 
 DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合は、新しい `dsh-ops/lib/capabilities/registry.js` に合わせて `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` を更新してください。名前に `remove/write/copy/move/batch` を含む未知の ops ツールは予備ルールで拾えますが、まったく似ていない名前は拾えません。
 
@@ -976,9 +976,9 @@ DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合�
 2. **ワイルドカードは免除しません。**
 3. **高インターセプト / 読み取り専用ホワイトリストのレベルでは効きません。**
 4. **時間枠は有限**：既定 8 時間、過ぎると免除されません；台帳は最大 5000 件、超えたら古いものから時間順に追い出されます。
-5. **一時ファイルは時間枠を見ません**：名前が一時ファイルらしいもの（`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`）は、台帳に載っていればどれだけ古くても免除されます。モデルが自分の調査用スクリプト・スクリーンショット・ログを片付けるときに、もう煩わされることはありません。
+5. **一時ファイルは時間枠を見ません**：この四つの形——`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`——だけが、台帳に載っていればどれだけ古くても免除されます。スクリプト（`.ps1`、`.mjs` など）・ログ・ソースは対象外で、時間枠を過ぎれば普通に確認が入ります。
 
-ちなみに：`cd` してから裸のファイル名を消す書き方（`cd /d/x && rm -f .tmp-a.mjs`）も認識します。フルパスを書く必要はありません。
+ちなみに：`cd` してから裸のファイル名を消す書き方（`cd /d/x && rm -f .tmp-a.mjs`）も認識します。フルパスを書く必要はありません。`Remove-Item a.tmp, b.tmp` のようなカンマ区切りの列挙も同様です。
 
 時間枠は `/guard-temp` で調整します：
 
