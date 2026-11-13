@@ -17,7 +17,7 @@
 |---|---|---|
 | DSH 桌面版（`dsh-desktop`） | `0.2.1-rc.3` | 内置 Node `24.21.0`、Python `3.12.14`；插件跑在这套运行时里 |
 | `dsh-ops` | `0.4.4` | `ops_*` 的工具名和参数结构按这个版本核对过 |
-| 本插件 | `0.2.5` | |
+| 本插件 | `0.2.7` | |
 
 DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照新版 `dsh-ops/lib/capabilities/registry.js` 更新 `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL`。名字里带 `remove/write/copy/move/batch` 的未知 ops 工具已经兜底拦了，完全不相干的名字则兜不住。
 
@@ -324,7 +324,7 @@ And even after full-permission mode is on, this plugin can force the model to fi
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Bundles Node `24.21.0` and Python `3.12.14`; the plugin runs inside this runtime |
 | `dsh-ops` | `0.4.4` | `ops_*` tool names and argument shapes were verified against this version |
-| This plugin | `0.2.5` | |
+| This plugin | `0.2.7` | |
 
 After upgrading DSH or dsh-ops, if the `ops_*` tools are renamed or their arguments change, update `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` against the new `dsh-ops/lib/capabilities/registry.js`. Unknown ops tools whose names contain `remove/write/copy/move/batch` are already covered by the fallback; completely unrelated names are not.
 
@@ -621,7 +621,7 @@ MIT, see [LICENSE](./LICENSE).
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Внутри Node `24.21.0` и Python `3.12.14`; плагин работает в этой среде |
 | `dsh-ops` | `0.4.4` | Имена инструментов `ops_*` и структура аргументов сверены с этой версией |
-| Этот плагин | `0.2.5` | |
+| Этот плагин | `0.2.7` | |
 
 После обновления DSH или dsh-ops, если инструменты `ops_*` переименованы или изменены их аргументы, обновите `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` по новому файлу `dsh-ops/lib/capabilities/registry.js`. Неизвестные ops-инструменты с `remove/write/copy/move/batch` в имени уже ловятся запасным правилом; совсем непохожие имена — нет.
 
@@ -920,7 +920,7 @@ MIT, см. [LICENSE](./LICENSE).
 |---|---|---|
 | DSH デスクトップ版（`dsh-desktop`） | `0.2.1-rc.3` | Node `24.21.0`・Python `3.12.14` を内蔵。プラグインはこのランタイム上で動作します |
 | `dsh-ops` | `0.4.4` | `ops_*` のツール名と引数構造はこのバージョンで確認済み |
-| このプラグイン | `0.2.5` | |
+| このプラグイン | `0.2.7` | |
 
 DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合は、新しい `dsh-ops/lib/capabilities/registry.js` に合わせて `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` を更新してください。名前に `remove/write/copy/move/batch` を含む未知の ops ツールは予備ルールで拾えますが、まったく似ていない名前は拾えません。
 
