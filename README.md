@@ -17,7 +17,7 @@
 |---|---|---|
 | DSH 桌面版（`dsh-desktop`） | `0.2.1-rc.3` | 内置 Node `24.21.0`、Python `3.12.14`；插件跑在这套运行时里 |
 | `dsh-ops` | `0.4.4` | `ops_*` 的工具名和参数结构按这个版本核对过 |
-| 本插件 | `0.2.7` | |
+| 本插件 | `0.2.8` | |
 
 DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照新版 `dsh-ops/lib/capabilities/registry.js` 更新 `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL`。名字里带 `remove/write/copy/move/batch` 的未知 ops 工具已经兜底拦了，完全不相干的名字则兜不住。
 
@@ -80,6 +80,7 @@ DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照�
 4. **窗口有限**：默认 8 小时，过期不再免审；台账最多 5000 条，超了按时间淘汰最旧的。
 5. **临时文件不看窗口**：只有这几种名字——`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`——只要在台账上，放多久都免审。脚本（`.ps1`、`.mjs` 等）、日志、源码不在此列，超过窗口照样要确认。
 6. **只认「真的新建」**：写入前文件已经存在（`edit` 改过、覆盖写、`copy`/`move` 来的），一律当用户文件——超过窗口照样确认，不会因为 AI 动过一次就变成自己的。旧版本台账里的记录升级后也按这个处理，所以第一次清理老临时文件可能要一次 token。
+7. **命令自己造的文件也算**：`netstat -ano > _net.txt`、`Start-Process -RedirectStandardOutput out.log` 这类重定向产物，命令一执行就记进台账；`read`/`grep`/`glob` 这类只读工具不记账。
 
 顺带一提：`cd` 到某个目录再删裸文件名（`cd /d/x && rm -f .tmp-a.mjs`）也能认出目标，不必写全路径；`Remove-Item a.tmp, b.tmp` 这种逗号分隔的写法同样认。
 
@@ -268,7 +269,7 @@ enabled=false        → 放行
 devMode=true         → 只放行普通操作，仍先查盘根/系统目录
 state/ 或配置文件    → 拦死（写入类工具才查配置文件，读放行）
 ops_* 变更工具       → dryRun 放行；否则进入下面同一套判定
-非 shell 工具        → 放行（write/edit 只在 state/配置检查里被查目标路径，顺手记台账）
+非 shell 工具        → 放行（只有 write/edit 这类会写盘的工具顺手记台账，read/grep 不记）
 抽通配符             → 拦死
 盘根（仅删除）       → 拦死
 protectedHit         → 系统目录
@@ -324,7 +325,7 @@ And even after full-permission mode is on, this plugin can force the model to fi
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Bundles Node `24.21.0` and Python `3.12.14`; the plugin runs inside this runtime |
 | `dsh-ops` | `0.4.4` | `ops_*` tool names and argument shapes were verified against this version |
-| This plugin | `0.2.7` | |
+| This plugin | `0.2.8` | |
 
 After upgrading DSH or dsh-ops, if the `ops_*` tools are renamed or their arguments change, update `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` against the new `dsh-ops/lib/capabilities/registry.js`. Unknown ops tools whose names contain `remove/write/copy/move/batch` are already covered by the fallback; completely unrelated names are not.
 
@@ -385,6 +386,7 @@ Four limits:
 4. **The window is limited**: 8 hours by default, after which the exemption no longer applies; the ledger holds at most 5000 entries, and the oldest are evicted by time once it overflows.
 5. **Temp files ignore the window**: only these four shapes — `.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp` — stay exempt as long as they are in the ledger, no matter how old. Scripts (`.ps1`, `.mjs`, …), logs and source files are not on that list: past the window they need confirmation like anything else.
 6. **Only genuine creations count**: if the file already existed before the write (edited, overwritten, produced by `copy`/`move`, or renamed), it is treated as yours — past the window it needs confirmation. Merely being touched by the AI does not make it its own. Ledger entries from older versions are handled the same way after the upgrade, so the first cleanup of old temp files may ask for a token.
+7. **Files a command creates count too**: redirect output (`netstat -ano > _net.txt`) and `-RedirectStandardOutput out.log` are recorded the moment the command runs; read-only tools (`read`, `grep`, `glob`) are not recorded at all.
 
 On a side note: `cd` into a directory and delete a bare filename (`cd /d/x && rm -f .tmp-a.mjs`) is recognised too — no need to spell out the full path; comma-separated lists such as `Remove-Item a.tmp, b.tmp` are understood as well.
 
@@ -565,7 +567,7 @@ enabled=false → allow
 devMode=true  → allow ordinary operations only, still check drive roots / system dirs first
 state/ or config file → hard block (config files only for write-type tools; reads allowed)
 ops_* mutation tool → allow dryRun; otherwise fall through to the same checks below
-non-shell tool → allow (write/edit targets are only inspected by the state/config checks, and recorded in the ledger anyway)
+non-shell tool → allow (only writing tools such as `write`/`edit` are recorded in the ledger; `read`/`grep` are not)
 wildcard detected → hard block
 drive root (delete only) → hard block
 protectedHit → system directories
@@ -621,7 +623,7 @@ MIT, see [LICENSE](./LICENSE).
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Внутри Node `24.21.0` и Python `3.12.14`; плагин работает в этой среде |
 | `dsh-ops` | `0.4.4` | Имена инструментов `ops_*` и структура аргументов сверены с этой версией |
-| Этот плагин | `0.2.7` | |
+| Этот плагин | `0.2.8` | |
 
 После обновления DSH или dsh-ops, если инструменты `ops_*` переименованы или изменены их аргументы, обновите `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` по новому файлу `dsh-ops/lib/capabilities/registry.js`. Неизвестные ops-инструменты с `remove/write/copy/move/batch` в имени уже ловятся запасным правилом; совсем непохожие имена — нет.
 
@@ -682,6 +684,7 @@ MIT, see [LICENSE](./LICENSE).
 4. **Окно ограничено**: по умолчанию 8 часов, после чего освобождение не действует; в реестре не более 5000 записей, при переполнении самые старые вытесняются по времени.
 5. **Временные файлы не подчиняются окну**: только эти четыре формы — `.tmp-*`, `tmp_*`, `_tmp*`, `*.tmp` — освобождаются навсегда, пока есть в реестре. Скрипты (`.ps1`, `.mjs`, …), логи и исходники в список не входят: после окна их подтверждают как всё остальное.
 6. **Считается только настоящее создание**: если файл уже существовал до записи (изменён `edit`, перезаписан, получен через `copy`/`move` или переименован), он считается вашим — после окна потребуется подтверждение. Одного касания ИИ недостаточно, чтобы файл стал его собственным. Записи реестра старых версий после обновления трактуются так же, поэтому первая уборка старых временных файлов может потребовать токен.
+7. **Файлы, созданные командой, тоже учитываются**: вывод переадресации (`netstat -ano > _net.txt`) и `-RedirectStandardOutput out.log` фиксируются сразу при выполнении команды; инструменты только для чтения (`read`, `grep`, `glob`) не записываются вовсе.
 
 Кстати: удаление голого имени после `cd` (`cd /d/x && rm -f .tmp-a.mjs`) тоже распознаётся — полный путь указывать не нужно; списки через запятую вроде `Remove-Item a.tmp, b.tmp` тоже понимаются.
 
@@ -862,7 +865,7 @@ enabled=false → пропустить
 devMode=true  → пропускать только обычные операции, но сначала по-прежнему проверять корни дисков / системные каталоги
 state/ или файл конфигурации → жёсткая блокировка (файлы конфигурации проверяются только для пишущих инструментов; чтение пропускается)
 ops_* изменяющий инструмент → пропустить dryRun; иначе перейти к тем же проверкам ниже
-не-shell инструмент → пропустить (целевые пути write/edit проверяются только в проверках state/конфигурации, а запись попутно заносится в реестр)
+не-shell инструмент → пропустить (в реестр попадают только пишущие инструменты вроде `write`/`edit`; `read`/`grep` — нет)
 обнаружен подстановочный знак → жёсткая блокировка
 корень диска (только удаление) → жёсткая блокировка
 protectedHit → системные каталоги
@@ -920,7 +923,7 @@ MIT, см. [LICENSE](./LICENSE).
 |---|---|---|
 | DSH デスクトップ版（`dsh-desktop`） | `0.2.1-rc.3` | Node `24.21.0`・Python `3.12.14` を内蔵。プラグインはこのランタイム上で動作します |
 | `dsh-ops` | `0.4.4` | `ops_*` のツール名と引数構造はこのバージョンで確認済み |
-| このプラグイン | `0.2.7` | |
+| このプラグイン | `0.2.8` | |
 
 DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合は、新しい `dsh-ops/lib/capabilities/registry.js` に合わせて `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` を更新してください。名前に `remove/write/copy/move/batch` を含む未知の ops ツールは予備ルールで拾えますが、まったく似ていない名前は拾えません。
 
@@ -981,6 +984,7 @@ DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合�
 4. **時間枠は有限**：既定 8 時間、過ぎると免除されません；台帳は最大 5000 件、超えたら古いものから時間順に追い出されます。
 5. **一時ファイルは時間枠を見ません**：この四つの形——`.tmp-*`、`tmp_*`、`_tmp*`、`*.tmp`——だけが、台帳に載っていればどれだけ古くても免除されます。スクリプト（`.ps1`、`.mjs` など）・ログ・ソースは対象外で、時間枠を過ぎれば普通に確認が入ります。
 6. **「本当に新規作成した」場合だけ**：書き込み前にファイルが存在していた（`edit` で改変、上書き、`copy`/`move` の産物、リネーム）ならユーザーのファイル扱いで、時間枠を過ぎれば確認が入ります。AI が一度触っただけで自分のものにはなりません。旧バージョンの台帳記録も更新後は同じ扱いになるため、古い一時ファイルの初回整理で一度 token を求められることがあります。
+7. **コマンドが作ったファイルも対象**：`netstat -ano > _net.txt` や `Start-Process -RedirectStandardOutput out.log` のようなリダイレクト先は、コマンド実行と同時に台帳へ記録されます。`read`・`grep`・`glob` などの読み取り専用ツールは記録しません。
 
 ちなみに：`cd` してから裸のファイル名を消す書き方（`cd /d/x && rm -f .tmp-a.mjs`）も認識します。フルパスを書く必要はありません。`Remove-Item a.tmp, b.tmp` のようなカンマ区切りの列挙も同様です。
 
@@ -1161,7 +1165,7 @@ enabled=false → 通過
 devMode=true  → 通常操作のみ通過。ただし先にドライブのルート / システムディレクトリを確認
 state/ または設定ファイル → 完全ブロック（設定ファイルは書き込み系ツールのみ確認、読み取りは通過）
 ops_* の変更系ツール → dryRun なら通過、それ以外は下の同じ判定へ
-shell 以外のツール → 通過（write/edit の対象パスは状態/設定の確認でだけ見る。書き込みは台帳にも記録）
+shell 以外のツール → 通過（台帳に記録するのは `write`/`edit` など書き込むツールだけ。`read`/`grep` は記録しない）
 ワイルドカード検出 → 完全ブロック
 ドライブのルート（削除時のみ） → 完全ブロック
 protectedHit → システムディレクトリ
