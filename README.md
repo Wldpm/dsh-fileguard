@@ -17,7 +17,7 @@
 |---|---|---|
 | DSH 桌面版（`dsh-desktop`） | `0.2.1-rc.3` | 内置 Node `24.21.0`、Python `3.12.14`；插件跑在这套运行时里 |
 | `dsh-ops` | `0.4.4` | `ops_*` 的工具名和参数结构按这个版本核对过 |
-| 本插件 | `0.2.8` | |
+| 本插件 | `0.2.9` | |
 
 DSH 或 dsh-ops 升级后，如果 `ops_*` 工具改名或改参数，请对照新版 `dsh-ops/lib/capabilities/registry.js` 更新 `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL`。名字里带 `remove/write/copy/move/batch` 的未知 ops 工具已经兜底拦了，完全不相干的名字则兜不住。
 
@@ -245,7 +245,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | 切换档位 |
 | `/guard-temp [小时]` | 调整临时文件免审窗口；不带参数循环切换，`0` 关掉 |
-| `/guard-gettoken` | 取出待放行批次的 token；被拦了多批就一次全列出来，每批一个（**这是给用户的，模型拿不到输出**） |
+| `/guard-gettoken` | 取出待放行批次的 token；被拦了多批就一次全列出来，每批一个，每条带创建时间（24 小时制）和目标（**这是给用户的，模型拿不到输出**） |
 | `/guard-cleantoken` | 一次清空所有待放行 token，全部立刻失效（不确定那批是想放行什么时用） |
 | `/guard-dev [on\|off]` | 切开发者模式；不带参数取反 |
 
@@ -325,7 +325,7 @@ And even after full-permission mode is on, this plugin can force the model to fi
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Bundles Node `24.21.0` and Python `3.12.14`; the plugin runs inside this runtime |
 | `dsh-ops` | `0.4.4` | `ops_*` tool names and argument shapes were verified against this version |
-| This plugin | `0.2.8` | |
+| This plugin | `0.2.9` | |
 
 After upgrading DSH or dsh-ops, if the `ops_*` tools are renamed or their arguments change, update `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` against the new `dsh-ops/lib/capabilities/registry.js`. Unknown ops tools whose names contain `remove/write/copy/move/batch` are already covered by the fallback; completely unrelated names are not.
 
@@ -545,7 +545,7 @@ Drive roots are not in this list — they're determined separately by a regex, a
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Switch tiers |
 | `/guard-temp [hours]` | Adjust the temporary-file exemption window; without an argument it cycles, `0` turns it off |
-| `/guard-gettoken` | Fetch the token for the pending batch; if several are blocked it lists them all at once, one token each (**this is for the user; the model cannot see the output**) |
+| `/guard-gettoken` | Fetch the token for the pending batch; if several are blocked it lists them all at once, one token each, with the creation time (24-hour) and targets (**this is for the user; the model cannot see the output**) |
 | `/guard-cleantoken` | Wipe every pending token at once; all of them stop working immediately (use it when you're not sure what that batch was about to approve) |
 | `/guard-dev [on\|off]` | Toggle developer mode; without an argument it inverts |
 
@@ -623,7 +623,7 @@ MIT, see [LICENSE](./LICENSE).
 |---|---|---|
 | DSH desktop (`dsh-desktop`) | `0.2.1-rc.3` | Внутри Node `24.21.0` и Python `3.12.14`; плагин работает в этой среде |
 | `dsh-ops` | `0.4.4` | Имена инструментов `ops_*` и структура аргументов сверены с этой версией |
-| Этот плагин | `0.2.8` | |
+| Этот плагин | `0.2.9` | |
 
 После обновления DSH или dsh-ops, если инструменты `ops_*` переименованы или изменены их аргументы, обновите `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` по новому файлу `dsh-ops/lib/capabilities/registry.js`. Неизвестные ops-инструменты с `remove/write/copy/move/batch` в имени уже ловятся запасным правилом; совсем непохожие имена — нет.
 
@@ -843,7 +843,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | Переключение уровня |
 | `/guard-temp [часы]` | Настроить окно освобождения временных файлов; без аргумента — циклическое переключение, `0` отключает |
-| `/guard-gettoken` | Получить токен ожидающей партии; если заблокировано несколько, все они перечисляются сразу, по токену на каждую (**это для пользователя; модель вывода не видит**) |
+| `/guard-gettoken` | Получить токен ожидающей партии; если заблокировано несколько, все они перечисляются сразу, по токену на каждую, с временем создания (24-часовой формат) и целями (**это для пользователя; модель вывода не видит**) |
 | `/guard-cleantoken` | Одним разом стереть все ожидающие токены — все сразу перестают работать (когда непонятно, что именно собиралась разрешить та партия) |
 | `/guard-dev [on\|off]` | Переключить режим разработчика; без аргумента — инвертировать |
 
@@ -923,7 +923,7 @@ MIT, см. [LICENSE](./LICENSE).
 |---|---|---|
 | DSH デスクトップ版（`dsh-desktop`） | `0.2.1-rc.3` | Node `24.21.0`・Python `3.12.14` を内蔵。プラグインはこのランタイム上で動作します |
 | `dsh-ops` | `0.4.4` | `ops_*` のツール名と引数構造はこのバージョンで確認済み |
-| このプラグイン | `0.2.8` | |
+| このプラグイン | `0.2.9` | |
 
 DSH や dsh-ops を更新して `ops_*` の名前や引数が変わった場合は、新しい `dsh-ops/lib/capabilities/registry.js` に合わせて `OPS_DELETE_TOOLS` / `OPS_WRITE_TOOLS` / `OPS_BATCH_TOOL` を更新してください。名前に `remove/write/copy/move/batch` を含む未知の ops ツールは予備ルールで拾えますが、まったく似ていない名前は拾えません。
 
@@ -1143,7 +1143,7 @@ C:\Recovery  C:\Boot  C:\PerfLogs
 |---|---|
 | `/guard-low` `/guard-default` `/guard-high` `/guard-readonly` | レベルの切り替え |
 | `/guard-temp [時間]` | 一時ファイルの審査免除時間枠を調整；引数なしで循環切替、`0` でオフ |
-| `/guard-gettoken` | 承認待ちバッチのトークンを取り出す。複数ブロックされていれば一度にすべて列挙され、それぞれに 1 つのトークンが付く（**これはあなた用。モデルは出力を見られません**） |
+| `/guard-gettoken` | 承認待ちバッチのトークンを取り出す。複数ブロックされていれば一度にすべて列挙され、それぞれに 1 つのトークンが付く。作成時刻（24 時間制）と対象も表示（**これはあなた用。モデルは出力を見られません**） |
 | `/guard-cleantoken` | 承認待ちのトークンをすべて一度に消す。すべて即座に無効になります（そのバッチが何を許可しようとしていたか分からないときに） |
 | `/guard-dev [on\|off]` | 開発者モードの切り替え；引数なしで反転 |
 
